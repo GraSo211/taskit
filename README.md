@@ -1,36 +1,28 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Taskit MVP
 
-## Getting Started
+## Puesta en marcha
 
-First, run the development server:
+1. Copia `.env.example` a `.env` y sustituye `BETTER_AUTH_SECRET` por un secreto aleatorio largo.
+2. Levanta PostgreSQL local:
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+   ```bash
+   docker compose up -d postgres
+   ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+3. Instala dependencias, genera Prisma y aplica la migración (esto es obligatorio antes de registrarse o iniciar sesión):
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+   ```bash
+   npm install
+   npm run prisma:generate
+   npm run prisma:migrate -- --name init
+   ```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. Arranca Next.js en `http://localhost:3001`:
 
-## Learn More
+   ```bash
+   npm run dev
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+La autenticación usa Better Auth con email/contraseña y el cliente siempre llama a `/api/auth` del mismo origen abierto en el navegador. Para producción, configura `BETTER_AUTH_URL` con la URL pública exacta de Taskit. Las tareas y sus cumplimientos pertenecen al usuario autenticado; las fechas de esta primera versión se calculan en UTC.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Si el formulario muestra un error `DATABASE_URL`, `P1001`, `P2021` o `P2022`, PostgreSQL no está disponible o la migración no se ha aplicado. Comprueba que `DATABASE_URL` apunte a la base correcta, ejecuta `docker compose up -d postgres` y vuelve a ejecutar `npm run prisma:migrate -- --name init`. No se incluye ningún secreto en el repositorio.

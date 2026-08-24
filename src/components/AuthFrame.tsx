@@ -1,0 +1,7 @@
+import type { FormEvent, ReactNode } from "react";
+import { BrandMark } from "./BrandMark";
+
+type AuthFrameProps = { title: string; description?: string; children: ReactNode; footer?: ReactNode; onSubmit?: (event: FormEvent<HTMLFormElement>) => void };
+export function AuthFrame({ title, description, children, footer, onSubmit }: AuthFrameProps) { return <main className="paper-grain flex min-h-screen items-center justify-center px-6 py-14"><section className="w-full max-w-md"><BrandMark /><div className="mt-20 sm:mt-24"><p className="mb-5 text-sm font-semibold uppercase tracking-[.2em] text-[#ffb829]">Tu espacio Taskit</p><h1 className="display-type text-5xl leading-[1.08] text-white sm:text-6xl">{title}</h1>{description && <p className="mt-6 text-lg leading-8 text-[#d0d0d0]">{description}</p>}</div><form className="mt-12 space-y-7" onSubmit={onSubmit}>{children}</form>{footer && <div className="mt-10 text-base text-[#b8b8b8]">{footer}</div>}</section></main>; }
+type AuthFieldProps = { label: string; name: string; type?: string; placeholder?: string; required?: boolean };
+export function AuthField({ label, name, type = "text", placeholder, required }: AuthFieldProps) { return <label className="block text-base text-[#d0d0d0]">{label}<input name={name} type={type} placeholder={placeholder} required={required} className="mt-3 h-14 w-full rounded-xl border border-[#3b3b42] bg-[#0d0d10] px-4 text-base text-white outline-none placeholder:text-[#888] focus:border-[#8052ff] focus:ring-2 focus:ring-[#8052ff]/30" /></label>; }

@@ -1,26 +1,41 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --color-void: #000000;
+  --color-bone-white: #ffffff;
+  --color-ash-gray: #b8b8b8;
+  --color-silver-mist: #d0d0d0;
+  --color-electric-iris: #8052ff;
+  --color-saffron-spark: #ffb829;
+  --color-deep-verdant: #15846e;
+  --background: var(--color-void);
+  --foreground: var(--color-bone-white);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
+  --color-void: #000000;
+  --color-bone-white: #ffffff;
+  --color-ash-gray: #b8b8b8;
+  --color-silver-mist: #d0d0d0;
+  --color-electric-iris: #8052ff;
+  --color-saffron-spark: #ffb829;
+  --color-deep-verdant: #15846e;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
+* { box-sizing: border-box; }
+html { background: #000; }
+body { background: var(--color-void); color: var(--color-bone-white); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-weight: 300; }
+::selection { background: #8052ff; color: #fff; }
+button, a, input, textarea, select { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid #ffb829; outline-offset: 4px; }
+.display-type { font-family: Inter, ui-sans-serif, sans-serif; font-weight: 400; letter-spacing: -0.04em; }
+.paper-grain { background-color: #000; background-image: radial-gradient(rgba(128,82,255,.18) .6px, transparent .6px); background-size: 13px 13px; }
+.soft-shadow { box-shadow: none; }
+.iris-button { background: #8052ff; color: #fff; border-radius: 24px; transition: background .2s ease, transform .2s ease; }
+.iris-button:hover { background: #946fff; transform: translateY(-2px); }
+.ghost-link { color: #9a9a9a; transition: color .2s ease; }
+.ghost-link:hover { color: #fff; }
+input, textarea, select { color-scheme: dark; }
