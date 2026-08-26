@@ -8,6 +8,7 @@ import {
   isTaskScheduledOnDate,
 } from "@/lib/task-logic";
 import {
+  addDays,
   dateKeyToDbDate,
   dbDateToDateKey,
   getMondayWeekWindow,
@@ -34,6 +35,75 @@ export async function requireCurrentUser() {
   return user;
 }
 
+export type DashboardHistory = {
+  daily?: {
+    startDate: string;
+    endDate: string;
+    points: Array<{ dateKey: string; completed: boolean; scheduled: boolean }>;
+  };
+  weekly?: {
+    weekStart: string;
+    weekEnd: string;
+    completed: number;
+    target: number;
+    days: Array<{ dateKey: string; completed: boolean }>;
+  };
+};
+
+const DAILY_HISTORY_LENGTH = 84;
+
+function latestDateKey(...dateKeys: DateKey[]) {
+  return dateKeys.reduce((latest, dateKey) => (dateKey > latest ? dateKey : latest));
+}
+
+function getTaskHistory(
+  task: Parameters<typeof calculateProgress>[0] & { frequency: "DAILY" | "WEEKLY" },
+  todayKey: DateKey,
+  completionDates: readonly DateKey[],
+  weeklyProgress: { completed: number; target: number },
+): DashboardHistory {
+  const completionSet = new Set(completionDates);
+
+  if (task.frequency === "DAILY") {
+    const startDateKey = task.startDate
+      ? typeof task.startDate === "string"
+        ? task.startDate
+        : dbDateToDateKey(task.startDate)
+      : todayKey;
+    const startDate = latestDateKey(addDays(todayKey, -(DAILY_HISTORY_LENGTH - 1)), startDateKey);
+    const points = [];
+
+    for (let dateKey = startDate; dateKey <= todayKey; dateKey = addDays(dateKey, 1)) {
+      points.push({
+        dateKey,
+        completed: completionSet.has(dateKey),
+        scheduled: isTaskScheduledOnDate(task, dateKey),
+      });
+    }
+
+    return { daily: { startDate, endDate: todayKey, points } };
+  }
+
+  const week = getMondayWeekWindow(todayKey);
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const dateKey = addDays(week.start, index);
+    return {
+      dateKey,
+      completed: completionSet.has(dateKey) && isTaskScheduledOnDate(task, dateKey),
+    };
+  });
+
+  return {
+    weekly: {
+      weekStart: week.start,
+      weekEnd: addDays(week.start, 6),
+      completed: weeklyProgress.completed,
+      target: weeklyProgress.target,
+      days,
+    },
+  };
+}
+
 export async function getDashboardData(date = new Date()) {
   const user = await requireCurrentUser();
 
@@ -53,25 +123,41 @@ export async function getDashboardData(date = new Date()) {
     const timezone = normalizeTimezone(task.timezone);
     const todayKey = localDateKey(date, timezone);
     const startDateKey = dbDateToDateKey(task.startDate);
-    return startDateKey <= todayKey ? [{ task, timezone, todayKey }] : [];
+    return startDateKey <= todayKey ? [{ task, timezone, todayKey, startDateKey }] : [];
   });
 
-  const weekWindows = eligibleTasks.map(({ todayKey }) => getMondayWeekWindow(todayKey));
-  const completions = weekWindows.length
+  const completionWindows = eligibleTasks.map(({ task, todayKey, startDateKey }) => {
+    const week = getMondayWeekWindow(todayKey);
+    const minimumRequiredDate = latestDateKey(week.start, startDateKey);
+    const dailyHistoryStart = latestDateKey(
+      addDays(todayKey, -(DAILY_HISTORY_LENGTH - 1)),
+      startDateKey,
+    );
+    return {
+      start:
+        task.frequency === "DAILY"
+          ? dailyHistoryStart < week.start
+            ? dailyHistoryStart
+            : week.start
+          : minimumRequiredDate,
+      end: week.end,
+    };
+  });
+  const completions = completionWindows.length
     ? await prisma.taskCompletion.findMany({
         where: {
           taskId: { in: eligibleTasks.map(({ task }) => task.id) },
           date: {
             gte: dateKeyToDbDate(
-              weekWindows.reduce(
-                (minimum, week) => (week.start < minimum ? week.start : minimum),
-                weekWindows[0].start,
+              completionWindows.reduce(
+                (minimum, window) => (window.start < minimum ? window.start : minimum),
+                completionWindows[0].start,
               ),
             ),
             lt: dateKeyToDbDate(
-              weekWindows.reduce(
-                (maximum, week) => (week.end > maximum ? week.end : maximum),
-                weekWindows[0].end,
+              completionWindows.reduce(
+                (maximum, window) => (window.end > maximum ? window.end : maximum),
+                completionWindows[0].end,
               ),
             ),
           },
@@ -101,6 +187,7 @@ export async function getDashboardData(date = new Date()) {
       todayKey,
       startDate: dbDateToDateKey(task.startDate),
       progress,
+      history: getTaskHistory(task, todayKey, completionDates, progress.weekly),
       completedToday: completionDates.includes(todayKey),
     };
   });
