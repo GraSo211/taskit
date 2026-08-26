@@ -4,11 +4,14 @@ import { revalidatePath } from "next/cache";
 
 import { getOwnedTask, requireCurrentUser } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
-import { isTaskScheduledOnDate, startOfUtcDay } from "@/lib/task-logic";
+import { isTaskScheduledOnDate } from "@/lib/task-logic";
+import { dateKeyToDbDate, localDateKey } from "@/lib/task-time";
 import {
   createTaskSchema,
   normalizeTaskData,
+  setTaskCompletionSchema,
   taskIdSchema,
+  taskCompletionDateSchema,
   updateTaskSchema,
 } from "@/lib/task-validation";
 
@@ -26,7 +29,7 @@ export async function createTask(input: unknown) {
       scheduledWeekdays: data.scheduledWeekdays,
       reminderTime: data.reminderTime || null,
       timezone: data.timezone,
-      startDate: startOfUtcDay(data.startDate),
+      startDate: dateKeyToDbDate(data.startDate),
     },
   });
 
@@ -54,7 +57,7 @@ export async function updateTask(input: unknown, values?: unknown) {
       scheduledWeekdays: data.scheduledWeekdays,
       reminderTime: data.reminderTime || null,
       timezone: data.timezone,
-      startDate: startOfUtcDay(data.startDate),
+      startDate: dateKeyToDbDate(data.startDate),
     },
   });
 
@@ -70,49 +73,48 @@ async function assertOwnedTask(input: unknown) {
   return task;
 }
 
-export async function completeTask(input: unknown) {
-  const task = await assertOwnedTask(input);
-  const date = startOfUtcDay(new Date());
-  if (!isTaskScheduledOnDate(task, date)) {
-    throw new Error("Task is not scheduled today");
+function taskTodayKey(task: { timezone: string }, now = new Date()) {
+  return localDateKey(now, task.timezone);
+}
+
+async function setTaskCompletionForInput(input: unknown, completed: boolean) {
+  const data = setTaskCompletionSchema.parse({
+    ...taskCompletionDateSchema.parse(input),
+    completed,
+  });
+  const task = await assertOwnedTask(data.taskId);
+  const todayKey = taskTodayKey(task);
+  if (data.dateKey !== todayKey) {
+    return { completed: false, stale: true };
+  }
+  const date = dateKeyToDbDate(todayKey);
+
+  if (completed) {
+    if (!isTaskScheduledOnDate(task, todayKey)) {
+      throw new Error("Task is not scheduled today");
+    }
+    await prisma.taskCompletion.upsert({
+      where: { taskId_date: { taskId: task.id, date } },
+      create: { taskId: task.id, date },
+      update: {},
+    });
+  } else {
+    await prisma.taskCompletion.deleteMany({ where: { taskId: task.id, date } });
   }
 
-  await prisma.taskCompletion.upsert({
-    where: { taskId_date: { taskId: task.id, date } },
-    create: { taskId: task.id, date },
-    update: {},
-  });
-
   revalidatePath("/dashboard");
-  return { completed: true };
+  return { completed };
+}
+
+export async function setTaskCompletion(input: unknown) {
+  const data = setTaskCompletionSchema.parse(input);
+  return setTaskCompletionForInput(data, data.completed);
+}
+
+export async function completeTask(input: unknown) {
+  return setTaskCompletionForInput(input, true);
 }
 
 export async function revertTaskCompletion(input: unknown) {
-  const task = await assertOwnedTask(input);
-  const date = startOfUtcDay(new Date());
-
-  await prisma.taskCompletion.deleteMany({ where: { taskId: task.id, date } });
-
-  revalidatePath("/dashboard");
-  return { completed: false };
-}
-
-export async function toggleTaskCompletion(input: unknown) {
-  const task = await assertOwnedTask(input);
-  const date = startOfUtcDay(new Date());
-  const completion = await prisma.taskCompletion.findUnique({
-    where: { taskId_date: { taskId: task.id, date } },
-  });
-
-  if (completion) {
-    await prisma.taskCompletion.delete({ where: { id: completion.id } });
-  } else {
-    if (!isTaskScheduledOnDate(task, date)) {
-      throw new Error("Task is not scheduled today");
-    }
-    await prisma.taskCompletion.create({ data: { taskId: task.id, date } });
-  }
-
-  revalidatePath("/dashboard");
-  return { completed: !completion };
+  return setTaskCompletionForInput(input, false);
 }

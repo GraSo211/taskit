@@ -26,6 +26,7 @@
 }
 
 * { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
 html { background: #000; }
 body { background: var(--color-void); color: var(--color-bone-white); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-weight: 300; }
 ::selection { background: #8052ff; color: #fff; }
@@ -39,3 +40,19 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .ghost-link { color: #9a9a9a; transition: color .2s ease; }
 .ghost-link:hover { color: #fff; }
 input, textarea, select { color-scheme: dark; }
+
+/* Keep dense dashboard controls readable without forcing a horizontal scroll. */
+.dashboard-title { font-size: clamp(3.25rem, 8vw, 6rem); line-height: 1.02; }
+.paper-grain h1 { font-size: clamp(3.5rem, 11vw, 7rem); }
+.dashboard-heading { align-items: flex-end; }
+.mobile-navigation { border-bottom: 1px solid #24242a; }
+.mobile-navigation[open] { padding-bottom: 1.25rem; }
+.mobile-navigation summary::-webkit-details-marker { display: none; }
+
+@media (max-width: 639px) {
+  .dashboard-heading { align-items: flex-start; flex-direction: column; }
+  .dashboard-heading .iris-button { width: 100%; }
+  .task-card { align-items: flex-start; }
+  .task-meta { width: 100%; padding-left: 3.5rem; justify-content: space-between; gap: .5rem; }
+  .task-meta button { margin-left: auto; }
+}

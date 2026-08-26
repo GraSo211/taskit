@@ -36,4 +36,10 @@ describe("task schedule validation", () => {
     expect(task.targetCount).toBe(3);
     expect(task.scheduledWeekdays).toEqual([]);
   });
+
+  it("rejects invalid civil dates and IANA zones", () => {
+    expect(() => createTaskSchema.parse({ ...baseTask, startDate: "2026-02-30" })).toThrow();
+    expect(() => createTaskSchema.parse({ ...baseTask, timezone: "Not/AZone" })).toThrow();
+    expect(() => createTaskSchema.parse({ ...baseTask, startDate: new Date("2026-08-19") })).toThrow();
+  });
 });

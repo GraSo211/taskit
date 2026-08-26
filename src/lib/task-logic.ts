@@ -4,7 +4,7 @@ export type TaskForProgress = {
   frequency: TaskFrequency;
   targetCount: number;
   scheduledWeekdays?: readonly number[];
-  startDate?: Date;
+  startDate?: string | Date;
 };
 
 export type Progress = {
@@ -20,6 +20,20 @@ export type TaskProgress = {
 };
 
 const UTC_DAY_MS = 24 * 60 * 60 * 1000;
+
+import {
+  addDays,
+  dbDateToDateKey,
+  getMondayWeekWindow,
+  type DateKey,
+  weekdayOfDateKey,
+} from "./task-time";
+
+type DateLike = DateKey | Date;
+
+function toDateKey(value: DateLike): DateKey {
+  return typeof value === "string" ? value : dbDateToDateKey(value);
+}
 
 export function startOfUtcDay(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
@@ -37,31 +51,37 @@ export function getUtcWeekWindow(date: Date): { start: Date; end: Date } {
   return { start, end: new Date(start.getTime() + 7 * UTC_DAY_MS) };
 }
 
+export function getTaskWindow(frequency: TaskFrequency, date: Date): { start: Date; end: Date };
+export function getTaskWindow(frequency: TaskFrequency, date: DateKey): { start: DateKey; end: DateKey };
 export function getTaskWindow(
   frequency: TaskFrequency,
-  date: Date,
-): { start: Date; end: Date } {
+  date: DateLike,
+): { start: Date | DateKey; end: Date | DateKey } {
+  if (typeof date === "string") {
+    return frequency === "DAILY"
+      ? { start: date, end: addDays(date, 1) }
+      : getMondayWeekWindow(date);
+  }
   return frequency === "DAILY" ? getUtcDayWindow(date) : getUtcWeekWindow(date);
 }
 
-export function isTaskScheduledOnDate(task: TaskForProgress, date: Date): boolean {
-  const day = startOfUtcDay(date);
-  if (task.startDate && day < startOfUtcDay(task.startDate)) return false;
+export function isTaskScheduledOnDate(task: TaskForProgress, date: DateLike): boolean {
+  const day = toDateKey(date);
+  if (task.startDate && day < toDateKey(task.startDate)) return false;
   if (task.frequency === "WEEKLY") return true;
 
   const scheduledWeekdays = task.scheduledWeekdays ?? [];
-  return scheduledWeekdays.length === 0 || scheduledWeekdays.includes(day.getUTCDay());
+  return scheduledWeekdays.length === 0 || scheduledWeekdays.includes(weekdayOfDateKey(day));
 }
 
-export function countScheduledDaysInWeek(task: TaskForProgress, date: Date): number {
-  const { start } = getUtcWeekWindow(date);
+export function countScheduledDaysInWeek(task: TaskForProgress, date: DateLike): number {
+  const { start } = getMondayWeekWindow(toDateKey(date));
   return Array.from({ length: 7 }, (_, index) => {
-    const day = new Date(start.getTime() + index * UTC_DAY_MS);
-    return isTaskScheduledOnDate(task, day) ? 1 : 0;
+    return isTaskScheduledOnDate(task, addDays(start, index)) ? 1 : 0;
   }).reduce<number>((total, value) => total + value, 0);
 }
 
-function countDatesInWindow(dates: readonly Date[], window: { start: Date; end: Date }) {
+function countDatesInWindow(dates: readonly DateKey[], window: { start: DateKey; end: DateKey }) {
   return dates.filter((date) => date >= window.start && date < window.end).length;
 }
 
@@ -77,14 +97,18 @@ function makeProgress(completed: number, target: number): Progress {
 
 export function calculateProgress(
   task: TaskForProgress,
-  completionDates: readonly Date[],
-  date: Date,
+  completionDates: readonly DateLike[],
+  date: DateLike,
 ): TaskProgress {
-  const scheduledCompletions = completionDates.filter((completionDate) =>
-    isTaskScheduledOnDate(task, completionDate),
-  );
-  const dailyCount = countDatesInWindow(scheduledCompletions, getUtcDayWindow(date));
-  const weeklyCount = countDatesInWindow(scheduledCompletions, getUtcWeekWindow(date));
+  const todayKey = toDateKey(date);
+  const scheduledCompletions = completionDates
+    .filter((completionDate) => isTaskScheduledOnDate(task, completionDate))
+    .map(toDateKey);
+  const dailyCount = countDatesInWindow(scheduledCompletions, {
+    start: todayKey,
+    end: addDays(todayKey, 1),
+  });
+  const weeklyCount = countDatesInWindow(scheduledCompletions, getMondayWeekWindow(todayKey));
 
   return {
     daily: makeProgress(dailyCount, task.targetCount),
