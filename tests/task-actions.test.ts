@@ -2,16 +2,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getOwnedTask: vi.fn(),
+  getOwnedProjectTask: vi.fn(),
+  getOwnedSubtask: vi.fn(),
   requireCurrentUser: vi.fn(),
   revalidatePath: vi.fn(),
   update: vi.fn(),
   upsert: vi.fn(),
   deleteMany: vi.fn(),
+  subtaskUpdate: vi.fn(),
+  subtaskCount: vi.fn(),
+  transaction: vi.fn(),
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("@/lib/dal", () => ({
   getOwnedTask: mocks.getOwnedTask,
+  getOwnedProjectTask: mocks.getOwnedProjectTask,
+  getOwnedSubtask: mocks.getOwnedSubtask,
   requireCurrentUser: mocks.requireCurrentUser,
 }));
 vi.mock("@/lib/prisma", () => ({
@@ -23,12 +30,12 @@ vi.mock("@/lib/prisma", () => ({
       upsert: mocks.upsert,
       deleteMany: mocks.deleteMany,
     },
+    $transaction: mocks.transaction,
   },
 }));
 
-const { completeTask, revertTaskCompletion, setTaskCompletion, updateTask } = await import(
-  "../src/app/actions/tasks"
-);
+const { completeTask, revertTaskCompletion, setSubtaskCompletion, setTaskCompletion, updateTask } =
+  await import("../src/app/actions/tasks");
 
 describe("updateTask", () => {
   beforeEach(() => {
@@ -46,6 +53,17 @@ describe("updateTask", () => {
     mocks.update.mockResolvedValue({ id: "task-1" });
     mocks.upsert.mockResolvedValue({ id: "completion-1" });
     mocks.deleteMany.mockResolvedValue({ count: 1 });
+    mocks.getOwnedSubtask.mockResolvedValue({ id: "sub-1", taskId: "project-1" });
+    mocks.subtaskUpdate.mockResolvedValue({ id: "sub-1", completed: true });
+    mocks.subtaskCount
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(2);
+    mocks.transaction.mockImplementation(async (callback) => callback({
+      task: { update: mocks.update },
+      taskSubtask: { update: mocks.subtaskUpdate, count: mocks.subtaskCount },
+    }));
   });
 
   it("authorizes ownership and clears weekdays when switching to weekly", async () => {
@@ -136,5 +154,33 @@ describe("updateTask", () => {
     await revertTaskCompletion({ taskId: "task-1", dateKey: "2026-08-19" });
     await expect(completeTask("task-1")).rejects.toThrow();
     vi.useRealTimers();
+  });
+
+  it("authorizes and idempotently derives project completion from subtasks", async () => {
+    await expect(
+      setSubtaskCompletion({ taskId: "project-1", subtaskId: "sub-1", completed: true }),
+    ).resolves.toEqual({ completed: true, projectCompleted: true });
+    await expect(
+      setSubtaskCompletion({ taskId: "project-1", subtaskId: "sub-1", completed: true }),
+    ).resolves.toEqual({ completed: true, projectCompleted: true });
+
+    expect(mocks.getOwnedSubtask).toHaveBeenCalledWith("sub-1", "project-1", "user-1");
+    expect(mocks.subtaskUpdate).toHaveBeenCalledWith({
+      where: { id: "sub-1" },
+      data: { completed: true },
+    });
+    expect(mocks.update).toHaveBeenCalledWith({
+      where: { id: "project-1" },
+      data: { completed: true },
+    });
+  });
+
+  it("does not mutate a subtask that is not owned by the current user", async () => {
+    mocks.getOwnedSubtask.mockResolvedValueOnce(null);
+
+    await expect(
+      setSubtaskCompletion({ taskId: "project-1", subtaskId: "other-subtask", completed: true }),
+    ).rejects.toThrow("Subtask not found");
+    expect(mocks.transaction).not.toHaveBeenCalled();
   });
 });

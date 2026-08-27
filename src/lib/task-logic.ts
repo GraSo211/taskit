@@ -1,4 +1,5 @@
 export type TaskFrequency = "DAILY" | "WEEKLY";
+export type TaskType = "ROUTINE" | "PROJECT";
 
 export type TaskForProgress = {
   frequency: TaskFrequency;
@@ -18,6 +19,8 @@ export type TaskProgress = {
   daily: Progress;
   weekly: Progress;
 };
+
+export type ProjectSubtaskForProgress = { completed: boolean };
 
 const UTC_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -93,6 +96,21 @@ function makeProgress(completed: number, target: number): Progress {
     percentage: Math.min(100, Math.round((completed / safeTarget) * 100)),
     isComplete: completed >= safeTarget,
   };
+}
+
+export function calculateProjectProgress(subtasks: readonly ProjectSubtaskForProgress[]): Progress {
+  const completed = subtasks.filter((subtask) => subtask.completed).length;
+  const target = subtasks.length;
+  return {
+    completed,
+    target,
+    percentage: target === 0 ? 0 : Math.min(100, Math.round((completed / target) * 100)),
+    isComplete: target > 0 && completed === target,
+  };
+}
+
+export function isProjectComplete(subtasks: readonly ProjectSubtaskForProgress[]): boolean {
+  return calculateProjectProgress(subtasks).isComplete;
 }
 
 export function calculateProgress(

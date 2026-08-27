@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   aggregateProgress,
   calculateProgress,
+  calculateProjectProgress,
   countScheduledDaysInWeek,
   getTaskWindow,
   getUtcDayWindow,
@@ -132,5 +133,21 @@ describe("task progress", () => {
         "2026-08-19",
       ),
     ).toBe(2);
+  });
+
+  it("derives project completion from every subtask", () => {
+    expect(calculateProjectProgress([{ completed: true }, { completed: false }])).toMatchObject({
+      completed: 1,
+      target: 2,
+      percentage: 50,
+      isComplete: false,
+    });
+    expect(calculateProjectProgress([{ completed: true }, { completed: true }])).toMatchObject({
+      completed: 2,
+      target: 2,
+      percentage: 100,
+      isComplete: true,
+    });
+    expect(calculateProjectProgress([]).isComplete).toBe(false);
   });
 });

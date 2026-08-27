@@ -42,4 +42,27 @@ describe("task schedule validation", () => {
     expect(() => createTaskSchema.parse({ ...baseTask, timezone: "Not/AZone" })).toThrow();
     expect(() => createTaskSchema.parse({ ...baseTask, startDate: new Date("2026-08-19") })).toThrow();
   });
+
+  it("validates project tasks with an ordered subtask payload", () => {
+    const task = normalizeTaskData(
+      createTaskSchema.parse({
+        title: "Launch",
+        type: "PROJECT",
+        startDate: "2026-08-19",
+        subtasks: [{ title: "Draft" }, { title: "Ship" }],
+      }),
+    );
+
+    expect(task).toMatchObject({ type: "PROJECT", frequency: null, targetCount: 1 });
+    expect(
+      (task as Extract<typeof task, { type: "PROJECT" }>).subtasks.map(({ title }) => title),
+    ).toEqual(["Draft", "Ship"]);
+    expect(() =>
+      createTaskSchema.parse({
+        title: "Bad project",
+        type: "PROJECT",
+        subtasks: [{ id: "same", title: "One" }, { id: "same", title: "Two" }],
+      }),
+    ).toThrow();
+  });
 });

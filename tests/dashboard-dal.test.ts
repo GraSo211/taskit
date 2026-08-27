@@ -130,4 +130,39 @@ describe("getDashboardData history", () => {
       orderBy: { date: "asc" },
     });
   });
+
+  it("keeps project tasks out of routine aggregates and exposes ordered project data", async () => {
+    mocks.findTasks.mockResolvedValue([
+      dailyTask,
+      weeklyTask,
+      {
+        id: "project-1",
+        userId: "user-1",
+        title: "Launch",
+        description: null,
+        type: "PROJECT",
+        frequency: null,
+        targetCount: 1,
+        scheduledWeekdays: [],
+        reminderTime: null,
+        timezone: "UTC",
+        startDate: new Date("2026-07-01T00:00:00.000Z"),
+        isActive: true,
+        subtasks: [
+          { id: "sub-2", title: "Ship", position: 1, completed: true },
+          { id: "sub-1", title: "Draft", position: 0, completed: true },
+        ],
+      },
+    ]);
+
+    const data = await getDashboardData(new Date("2026-08-20T01:30:00.000Z"));
+
+    expect(data.progress.daily).toMatchObject({ completed: 1, target: 1 });
+    expect(data.progress.weekly).toMatchObject({ completed: 2, target: 2 });
+    expect(data.projects[0]).toMatchObject({ id: "project-1", completed: true });
+    expect(data.projects[0].subtasks.map(({ id }) => id)).toEqual(["sub-1", "sub-2"]);
+    expect(mocks.findCompletions).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ taskId: { in: ["daily-1", "weekly-1"] } }),
+    }));
+  });
 });

@@ -5,7 +5,9 @@ import { prisma } from "@/lib/prisma";
 import {
   aggregateProgress,
   calculateProgress,
+  calculateProjectProgress,
   isTaskScheduledOnDate,
+  type TaskFrequency,
 } from "@/lib/task-logic";
 import {
   addDays,
@@ -50,7 +52,25 @@ export type DashboardHistory = {
   };
 };
 
+export type DashboardProject = {
+  id: string;
+  title: string;
+  description: string | null;
+  type: "PROJECT";
+  frequency: null;
+  startDate: string;
+  completed: boolean;
+  subtasks: Array<{ id: string; title: string; position: number; completed: boolean }>;
+  progress: ReturnType<typeof calculateProjectProgress>;
+};
+
 const DAILY_HISTORY_LENGTH = 84;
+
+function isRoutineRecord<T extends { type: string; frequency: TaskFrequency | null }>(
+  task: T,
+): task is T & { frequency: TaskFrequency } {
+  return task.type !== "PROJECT" && task.frequency !== null;
+}
 
 function latestDateKey(...dateKeys: DateKey[]) {
   return dateKeys.reduce((latest, dateKey) => (dateKey > latest ? dateKey : latest));
@@ -113,13 +133,18 @@ export async function getDashboardData(date = new Date()) {
       isActive: true,
     },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    include: {
+      subtasks: { orderBy: { position: "asc" } },
+    },
   });
 
   const clockSnapshots = tasks.map((task) => {
     const timezone = normalizeTimezone(task.timezone);
     return { timezone, dateKey: localDateKey(date, timezone) };
   });
-  const eligibleTasks = tasks.flatMap((task) => {
+  const routineTasks = tasks.filter(isRoutineRecord);
+  const projectTasks = tasks.filter((task) => task.type === "PROJECT" || task.frequency === null);
+  const eligibleTasks = routineTasks.flatMap((task) => {
     const timezone = normalizeTimezone(task.timezone);
     const todayKey = localDateKey(date, timezone);
     const startDateKey = dbDateToDateKey(task.startDate);
@@ -177,6 +202,7 @@ export async function getDashboardData(date = new Date()) {
     const progress = calculateProgress(task, completionDates, todayKey);
     return {
       id: task.id,
+      type: "ROUTINE" as const,
       title: task.title,
       description: task.description,
       frequency: task.frequency,
@@ -194,18 +220,68 @@ export async function getDashboardData(date = new Date()) {
   const dashboardTasks = taskData.filter((task) =>
     isTaskScheduledOnDate(task, task.todayKey),
   );
+  const projects: DashboardProject[] = projectTasks.flatMap((task) => {
+    const timezone = normalizeTimezone(task.timezone);
+    const todayKey = localDateKey(date, timezone);
+    if (dbDateToDateKey(task.startDate) > todayKey) return [];
+
+    const subtasks = [...(task.subtasks ?? [])]
+      .sort((left, right) => left.position - right.position)
+      .map((subtask) => ({
+        id: subtask.id,
+        title: subtask.title,
+        position: subtask.position,
+        completed: subtask.completed,
+      }));
+    const progress = calculateProjectProgress(subtasks);
+    return [
+      {
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        type: "PROJECT" as const,
+        frequency: null,
+        startDate: dbDateToDateKey(task.startDate),
+        completed: progress.isComplete,
+        subtasks,
+        progress,
+      },
+    ];
+  });
 
   return {
     user,
     clockSnapshots,
     progress: {
-      daily: aggregateProgress(dashboardTasks.map((task) => task.progress.daily)),
-      weekly: aggregateProgress(taskData.map((task) => task.progress.weekly)),
+      daily: aggregateProgress(
+        dashboardTasks
+          .filter((task) => task.frequency === "DAILY")
+          .map((task) => task.progress.daily),
+      ),
+      weekly: aggregateProgress(
+        taskData
+          .filter((task) => task.frequency === "WEEKLY")
+          .map((task) => task.progress.weekly),
+      ),
     },
     tasks: dashboardTasks,
+    projects,
   };
 }
 
 export async function getOwnedTask(taskId: string, userId: string) {
   return prisma.task.findFirst({ where: { id: taskId, userId } });
+}
+
+export async function getOwnedProjectTask(taskId: string, userId: string) {
+  return prisma.task.findFirst({
+    where: { id: taskId, userId, type: "PROJECT" },
+    include: { subtasks: { orderBy: { position: "asc" } } },
+  });
+}
+
+export async function getOwnedSubtask(subtaskId: string, taskId: string, userId: string) {
+  return prisma.taskSubtask.findFirst({
+    where: { id: subtaskId, taskId, task: { userId, type: "PROJECT" } },
+  });
 }

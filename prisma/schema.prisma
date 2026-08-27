@@ -54,12 +54,12 @@ model Account {
 }
 
 model Verification {
-  id         String    @id
+  id         String   @id
   identifier String
   value      String
   expiresAt  DateTime
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([identifier])
 }
@@ -69,24 +69,46 @@ enum TaskFrequency {
   WEEKLY
 }
 
+enum TaskType {
+  ROUTINE
+  PROJECT
+}
+
 model Task {
-  id           String         @id @default(cuid())
-  userId       String
-  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  frequency    TaskFrequency
-  targetCount  Int
-  scheduledWeekdays Int[]    @default([])
-  title        String
-  description  String?
-  reminderTime String?
-  timezone     String         @default("UTC")
-  startDate    DateTime       @db.Date
-  isActive     Boolean        @default(true)
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  completions  TaskCompletion[]
+  id                String           @id @default(cuid())
+  userId            String
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              TaskType         @default(ROUTINE)
+  frequency         TaskFrequency?
+  targetCount       Int              @default(1)
+  scheduledWeekdays Int[]            @default([])
+  title             String
+  description       String?
+  reminderTime      String?
+  timezone          String           @default("UTC")
+  startDate         DateTime         @db.Date
+  isActive          Boolean          @default(true)
+  completed         Boolean          @default(false)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  completions       TaskCompletion[]
+  subtasks          TaskSubtask[]
 
   @@index([userId, isActive])
+}
+
+model TaskSubtask {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  title     String
+  position  Int
+  completed Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([taskId, position])
+  @@index([taskId, position])
 }
 
 model TaskCompletion {
