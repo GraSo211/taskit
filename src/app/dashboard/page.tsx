@@ -10,5 +10,5 @@ export default async function DashboardPage() {
     if (error instanceof Error && error.message === "Unauthorized") redirect("/sign-in");
     throw error;
   }
-  return <DashboardClient data={data} />;
+  return <DashboardClient data={data} view="overview" />;
 }
