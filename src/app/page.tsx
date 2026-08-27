@@ -1,4 +1,14 @@
-import Link from "next/link";
-import { BrandMark } from "@/components/BrandMark";
+import { redirect } from "next/navigation";
+import { getDashboardData } from "@/lib/dal";
+import DashboardClient from "./dashboard/DashboardClient";
 
-export default function Home() { return <main className="paper-grain min-h-screen bg-black"><header className="mx-auto flex max-w-7xl items-center justify-between px-6 py-8 sm:px-10"><BrandMark /><nav className="flex items-center gap-8 text-sm"><Link href="/sign-in" className="ghost-link">Iniciar sesión</Link><Link href="/sign-up" className="iris-button px-5 py-3 text-xs font-semibold uppercase tracking-[.08em]">Crear cuenta</Link></nav></header><section className="mx-auto grid min-h-[calc(100vh-100px)] max-w-7xl items-center gap-16 px-6 pb-20 pt-20 sm:px-10 lg:grid-cols-[.95fr_1.05fr]"><div><p className="text-sm font-semibold uppercase tracking-[.2em] text-[#ffb829]">Tareas que encuentran su ritmo</p><h1 className="display-type mt-7 max-w-3xl text-7xl leading-[.95] text-white sm:text-[7rem]">Haz espacio para lo que importa<span className="text-[#8052ff]">.</span></h1><p className="mt-10 max-w-lg text-lg leading-8 text-[#bdbdbd]">Taskit convierte tus intenciones en rutinas claras, sin ruido y sin perder de vista el día que tienes delante.</p><Link href="/sign-up" className="iris-button mt-10 inline-flex px-6 py-4 text-sm font-semibold uppercase tracking-[.08em]">Empezar ahora</Link></div><div className="relative hidden min-h-[460px] lg:block" aria-hidden="true"><span className="absolute left-[18%] top-[25%] size-2 rotate-45 bg-[#ffb829]"/><span className="absolute left-[42%] top-[12%] size-3 rotate-45 bg-[#8052ff]"/><span className="absolute left-[70%] top-[34%] size-2 rotate-45 bg-[#15846e]"/><span className="absolute left-[32%] top-[56%] size-2 rotate-45 bg-[#8052ff]"/><span className="absolute left-[61%] top-[65%] size-3 rotate-45 bg-[#ffb829]"/><span className="absolute left-[79%] top-[72%] size-2 rotate-45 bg-[#8052ff]"/><div className="absolute left-[24%] top-[30%] size-56 rounded-[45%] border border-[#8052ff]/40 [transform:rotate(-24deg)]"/><div className="absolute left-[38%] top-[40%] size-48 rounded-[45%] border border-[#ffb829]/30 [transform:rotate(36deg)]"/><p className="absolute bottom-10 left-1/4 max-w-xs text-sm leading-6 text-[#9a9a9a]">Una vista serena de tus tareas diarias y tus metas semanales.</p></div></section></main>; }
+export default async function HomePage() {
+  let data: Awaited<ReturnType<typeof getDashboardData>>;
+  try {
+    data = await getDashboardData();
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") redirect("/sign-in");
+    throw error;
+  }
+  return <DashboardClient data={data} view="overview" />;
+}
