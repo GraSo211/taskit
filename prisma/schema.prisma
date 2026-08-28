@@ -72,6 +72,22 @@ enum TaskFrequency {
 enum TaskType {
   ROUTINE
   PROJECT
+  EVENT
+}
+
+enum EventMode {
+  MANUAL
+  AUTOMATIC
+}
+
+enum EventFailurePolicy {
+  STOP
+  CONTINUE
+}
+
+enum EventDayOutcome {
+  COMPLETED
+  FAILED
 }
 
 model Task {
@@ -89,10 +105,14 @@ model Task {
   startDate         DateTime         @db.Date
   isActive          Boolean          @default(true)
   completed         Boolean          @default(false)
+  eventMode         EventMode?
+  eventDuration     Int?
+  eventFailurePolicy EventFailurePolicy?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   completions       TaskCompletion[]
   subtasks          TaskSubtask[]
+  eventDayMarks     EventDayMark[]
 
   @@index([userId, isActive])
 }
@@ -119,5 +139,16 @@ model TaskCompletion {
   createdAt DateTime @default(now())
 
   @@unique([taskId, date])
+  @@index([taskId, date])
+}
+
+model EventDayMark {
+  taskId    String
+  task      Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  date      DateTime        @db.Date
+  outcome   EventDayOutcome
+  createdAt DateTime        @default(now())
+
+  @@id([taskId, date])
   @@index([taskId, date])
 }

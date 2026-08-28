@@ -9,6 +9,7 @@ import {
   isTaskScheduledOnDate,
   type TaskFrequency,
 } from "@/lib/task-logic";
+import { projectEvent, type EventDayOutcome, type EventDayStatus } from "@/lib/event-logic";
 import {
   addDays,
   dateKeyToDbDate,
@@ -62,6 +63,24 @@ export type DashboardProject = {
   completed: boolean;
   subtasks: Array<{ id: string; title: string; position: number; completed: boolean }>;
   progress: ReturnType<typeof calculateProjectProgress>;
+};
+
+export type DashboardEvent = {
+  id: string;
+  title: string;
+  description: string | null;
+  type: "EVENT";
+  mode: "MANUAL" | "AUTOMATIC";
+  duration: number;
+  failurePolicy: "STOP" | "CONTINUE";
+  timezone: string;
+  startDate: string;
+  todayKey: string;
+  days: Array<{
+    dateKey: string;
+    status: EventDayStatus;
+    outcome: EventDayOutcome | null;
+  }>;
 };
 
 const DAILY_HISTORY_LENGTH = 84;
@@ -135,6 +154,7 @@ export async function getDashboardData(date = new Date()) {
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     include: {
       subtasks: { orderBy: { position: "asc" } },
+      eventDayMarks: { orderBy: { date: "asc" } },
     },
   });
 
@@ -143,7 +163,8 @@ export async function getDashboardData(date = new Date()) {
     return { timezone, dateKey: localDateKey(date, timezone) };
   });
   const routineTasks = tasks.filter(isRoutineRecord);
-  const projectTasks = tasks.filter((task) => task.type === "PROJECT" || task.frequency === null);
+  const projectTasks = tasks.filter((task) => task.type === "PROJECT");
+  const eventTasks = tasks.filter((task) => task.type === "EVENT");
   const eligibleTasks = routineTasks.flatMap((task) => {
     const timezone = normalizeTimezone(task.timezone);
     const todayKey = localDateKey(date, timezone);
@@ -248,6 +269,35 @@ export async function getDashboardData(date = new Date()) {
       },
     ];
   });
+  const events: DashboardEvent[] = eventTasks.flatMap((task) => {
+    if (!task.eventMode || !task.eventDuration || !task.eventFailurePolicy) return [];
+    const timezone = normalizeTimezone(task.timezone);
+    const todayKey = localDateKey(date, timezone);
+    const projection = projectEvent(
+      {
+        startDate: dbDateToDateKey(task.startDate),
+        duration: task.eventDuration,
+        timezone,
+        mode: task.eventMode,
+        failurePolicy: task.eventFailurePolicy,
+      },
+      (task.eventDayMarks ?? []).map((mark) => ({ dateKey: mark.date, outcome: mark.outcome })),
+      date,
+    );
+    return [{
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      type: "EVENT" as const,
+      mode: task.eventMode,
+      duration: task.eventDuration,
+      failurePolicy: task.eventFailurePolicy,
+      timezone,
+      startDate: dbDateToDateKey(task.startDate),
+      todayKey,
+      days: projection.days,
+    }];
+  });
 
   return {
     user,
@@ -266,6 +316,7 @@ export async function getDashboardData(date = new Date()) {
     },
     tasks: dashboardTasks,
     projects,
+    events,
   };
 }
 
@@ -277,6 +328,13 @@ export async function getOwnedProjectTask(taskId: string, userId: string) {
   return prisma.task.findFirst({
     where: { id: taskId, userId, type: "PROJECT" },
     include: { subtasks: { orderBy: { position: "asc" } } },
+  });
+}
+
+export async function getOwnedEvent(taskId: string, userId: string) {
+  return prisma.task.findFirst({
+    where: { id: taskId, userId, type: "EVENT" },
+    include: { eventDayMarks: { orderBy: { date: "asc" } } },
   });
 }
 
