@@ -20,7 +20,12 @@ export type TaskProgress = {
   weekly: Progress;
 };
 
-export type ProjectSubtaskForProgress = { completed: boolean };
+export type ProjectSubtaskForProgress = {
+  id?: string;
+  parentId?: string | null;
+  completed: boolean;
+  children?: readonly ProjectSubtaskForProgress[];
+};
 
 const UTC_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -99,8 +104,17 @@ function makeProgress(completed: number, target: number): Progress {
 }
 
 export function calculateProjectProgress(subtasks: readonly ProjectSubtaskForProgress[]): Progress {
-  const completed = subtasks.filter((subtask) => subtask.completed).length;
-  const target = subtasks.length;
+  const nested = subtasks.some((subtask) => subtask.children !== undefined);
+  const leaves = nested
+    ? collectTreeLeaves(subtasks)
+    : (() => {
+        const parentIds = new Set(
+          subtasks.flatMap((subtask) => (subtask.id && subtask.parentId ? [subtask.parentId] : [])),
+        );
+        return subtasks.filter((subtask) => !subtask.id || !parentIds.has(subtask.id));
+      })();
+  const completed = leaves.filter((subtask) => subtask.completed).length;
+  const target = leaves.length;
   return {
     completed,
     target,
@@ -110,7 +124,22 @@ export function calculateProjectProgress(subtasks: readonly ProjectSubtaskForPro
 }
 
 export function isProjectComplete(subtasks: readonly ProjectSubtaskForProgress[]): boolean {
-  return calculateProjectProgress(subtasks).isComplete;
+  const roots = subtasks.filter((subtask) => subtask.parentId === undefined || subtask.parentId === null);
+  return roots.length > 0 && roots.every((subtask) => subtask.completed);
+}
+
+function collectTreeLeaves(
+  subtasks: readonly ProjectSubtaskForProgress[],
+): ProjectSubtaskForProgress[] {
+  const leaves: ProjectSubtaskForProgress[] = [];
+  const pending = [...subtasks];
+  while (pending.length) {
+    const subtask = pending.pop();
+    if (!subtask) continue;
+    if (subtask.children?.length) pending.push(...subtask.children);
+    else leaves.push(subtask);
+  }
+  return leaves;
 }
 
 export function calculateProgress(

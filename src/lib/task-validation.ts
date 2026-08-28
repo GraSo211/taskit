@@ -56,7 +56,7 @@ const projectTaskFieldsSchema = commonTaskFieldsSchema.extend({
   frequency: taskFrequencySchema.nullish(),
   targetCount: z.coerce.number().int().min(1).max(1).default(1),
   scheduledWeekdays: scheduledWeekdaysSchema,
-  subtasks: z.array(subtaskInputSchema).min(1).max(100),
+  subtasks: z.array(subtaskInputSchema).min(1),
 });
 
 function withUniqueSubtaskIds<T extends typeof projectTaskFieldsSchema>(schema: T) {
@@ -73,9 +73,23 @@ function withUniqueSubtaskIds<T extends typeof projectTaskFieldsSchema>(schema: 
 }
 
 const projectTaskSchema = withUniqueSubtaskIds(projectTaskFieldsSchema);
-const projectTaskUpdateSchema = withUniqueSubtaskIds(
-  projectTaskFieldsSchema.extend({ taskId: taskIdSchema }),
-);
+const projectTaskUpdateSchema = projectTaskFieldsSchema
+  .extend({
+    taskId: taskIdSchema,
+    subtasks: z.array(subtaskInputSchema).optional(),
+  })
+  .superRefine((task, context) => {
+    if (task.subtasks) {
+      const ids = task.subtasks.flatMap((subtask) => (subtask.id ? [subtask.id] : []));
+      if (new Set(ids).size !== ids.length) {
+        context.addIssue({
+          code: "custom",
+          path: ["subtasks"],
+          message: "Subtask ids must be unique",
+        });
+      }
+    }
+  });
 
 const eventFieldsSchema = z.object({
   title: z.string().trim().min(1).max(120),
@@ -135,6 +149,37 @@ export const subtaskCompletionSchema = z.object({
   taskId: taskIdSchema,
   subtaskId: taskIdSchema,
   completed: z.boolean(),
+});
+
+const optionalParentIdSchema = z.preprocess(
+  (value) => value ?? null,
+  taskIdSchema.nullable(),
+);
+const subtaskTitleSchema = z.string().trim().min(1).max(120);
+
+export const addSubtaskSchema = z.object({
+  taskId: taskIdSchema,
+  parentId: optionalParentIdSchema,
+  title: subtaskTitleSchema,
+  position: z.coerce.number().int().min(0).optional(),
+});
+
+export const renameSubtaskSchema = z.object({
+  taskId: taskIdSchema,
+  subtaskId: taskIdSchema,
+  title: subtaskTitleSchema,
+});
+
+export const deleteSubtaskSchema = z.object({
+  taskId: taskIdSchema,
+  subtaskId: taskIdSchema,
+});
+
+export const moveSubtaskSchema = z.object({
+  taskId: taskIdSchema,
+  subtaskId: taskIdSchema,
+  parentId: optionalParentIdSchema,
+  position: z.coerce.number().int().min(0),
 });
 
 export function normalizeTaskData<

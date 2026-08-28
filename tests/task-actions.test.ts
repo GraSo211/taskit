@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   upsert: vi.fn(),
   deleteMany: vi.fn(),
   subtaskUpdate: vi.fn(),
+  subtaskFindMany: vi.fn(),
   subtaskCount: vi.fn(),
   transaction: vi.fn(),
 }));
@@ -55,6 +56,9 @@ describe("updateTask", () => {
     mocks.deleteMany.mockResolvedValue({ count: 1 });
     mocks.getOwnedSubtask.mockResolvedValue({ id: "sub-1", taskId: "project-1" });
     mocks.subtaskUpdate.mockResolvedValue({ id: "sub-1", completed: true });
+    mocks.subtaskFindMany.mockResolvedValue([
+      { id: "sub-1", taskId: "project-1", parentId: null, title: "Step", position: 0, completed: false },
+    ]);
     mocks.subtaskCount
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(2)
@@ -62,7 +66,7 @@ describe("updateTask", () => {
       .mockResolvedValueOnce(2);
     mocks.transaction.mockImplementation(async (callback) => callback({
       task: { update: mocks.update },
-      taskSubtask: { update: mocks.subtaskUpdate, count: mocks.subtaskCount },
+      taskSubtask: { update: mocks.subtaskUpdate, findMany: mocks.subtaskFindMany, count: mocks.subtaskCount },
     }));
   });
 
@@ -105,6 +109,32 @@ describe("updateTask", () => {
     ).rejects.toThrow("Task not found");
 
     expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("updates project metadata without requiring or synchronizing a flat subtask payload", async () => {
+    mocks.getOwnedTask.mockResolvedValueOnce({
+      id: "project-1",
+      userId: "user-1",
+      type: "PROJECT",
+      frequency: null,
+      startDate: new Date("2026-08-19T00:00:00.000Z"),
+      timezone: "UTC",
+    });
+    mocks.getOwnedProjectTask.mockResolvedValueOnce({ id: "project-1", subtasks: [] });
+
+    await expect(updateTask({
+      taskId: "project-1",
+      type: "PROJECT",
+      title: "Updated project",
+      description: null,
+      startDate: "2026-08-19",
+      timezone: "UTC",
+    })).resolves.toEqual({ id: "project-1" });
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(mocks.update).toHaveBeenCalledWith({
+      where: { id: "project-1" },
+      data: expect.objectContaining({ title: "Updated project" }),
+    });
   });
 
   it("returns an explicit stale result without mutating or revalidating", async () => {

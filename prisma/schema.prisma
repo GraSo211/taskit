@@ -118,17 +118,20 @@ model Task {
 }
 
 model TaskSubtask {
-  id        String   @id @default(cuid())
+  id        String        @id @default(cuid())
   taskId    String
-  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task      Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  parentId  String?
+  parent    TaskSubtask?  @relation("TaskSubtaskHierarchy", fields: [parentId, taskId], references: [id, taskId], onDelete: Cascade)
+  children  TaskSubtask[] @relation("TaskSubtaskHierarchy")
   title     String
   position  Int
-  completed Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  completed Boolean       @default(false)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
 
-  @@unique([taskId, position])
-  @@index([taskId, position])
+  @@unique([id, taskId])
+  @@index([taskId, parentId, position])
 }
 
 model TaskCompletion {

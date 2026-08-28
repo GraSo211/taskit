@@ -10,6 +10,7 @@ import {
   type TaskFrequency,
 } from "@/lib/task-logic";
 import { projectEvent, type EventDayOutcome, type EventDayStatus } from "@/lib/event-logic";
+import { projectSubtaskTree, type SubtaskRow, type SubtaskTreeNode } from "@/lib/subtask-logic";
 import {
   addDays,
   dateKeyToDbDate,
@@ -61,7 +62,7 @@ export type DashboardProject = {
   frequency: null;
   startDate: string;
   completed: boolean;
-  subtasks: Array<{ id: string; title: string; position: number; completed: boolean }>;
+  subtasks: SubtaskTreeNode[];
   progress: ReturnType<typeof calculateProjectProgress>;
 };
 
@@ -246,14 +247,7 @@ export async function getDashboardData(date = new Date()) {
     const todayKey = localDateKey(date, timezone);
     if (dbDateToDateKey(task.startDate) > todayKey) return [];
 
-    const subtasks = [...(task.subtasks ?? [])]
-      .sort((left, right) => left.position - right.position)
-      .map((subtask) => ({
-        id: subtask.id,
-        title: subtask.title,
-        position: subtask.position,
-        completed: subtask.completed,
-      }));
+    const subtasks = projectSubtaskTree((task.subtasks ?? []) as SubtaskRow[]);
     const progress = calculateProjectProgress(subtasks);
     return [
       {

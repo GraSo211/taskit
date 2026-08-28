@@ -136,6 +136,27 @@ input, textarea, select { color-scheme: dark; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
 
+/* Hierarchical project subtasks: indentation is deliberately capped so the
+   tree remains readable at phone widths. Reordering is presented as visual
+   placement, never as a sequence of dependent steps. */
+.task-tree-wrap { min-width: 0; margin-top: 1rem; }
+.task-tree-summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem; color: #a88dff; font-size: .7rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+.task-tree-summary span:last-child { color: #777; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.task-tree, .task-tree-children { margin: .55rem 0 0; padding: 0; list-style: none; }
+.task-tree-children { margin-left: 1rem; border-left: 1px solid #30283e; padding-left: .45rem; }
+.task-tree-row { display: flex; min-width: 0; align-items: center; gap: .45rem; margin-left: min(calc(var(--tree-level, 1) * .15rem), .6rem); border-radius: .65rem; padding: .15rem 0; }
+.task-tree-toggle { display: grid; width: 2.75rem; height: 2.75rem; flex: 0 0 2.75rem; place-items: center; border: 1px solid #67616f; border-radius: 999px; color: transparent; transition: background .2s, border-color .2s; }
+.task-tree-toggle:hover, .task-tree-toggle:focus-visible { border-color: #fff; background: #1a1725; }
+.task-tree-toggle.is-checked { border-color: #8052ff; background: #8052ff; color: #fff; }
+.task-tree-toggle span.is-mixed { width: .8rem; height: .15rem; background: #ffb829; color: transparent; }
+.task-tree-title { min-width: 0; flex: 1; overflow-wrap: anywhere; color: #d0d0d0; font-size: .9rem; line-height: 1.35; }.task-tree-title .is-done { color: #888; text-decoration: line-through; }.task-tree-title small { display: block; margin-top: .15rem; color: #777; font-size: .68rem; }
+.subtask-actions { position: relative; flex: 0 0 auto; }.subtask-more { display: grid; min-width: 2.75rem; min-height: 2.75rem; cursor: pointer; place-items: center; border-radius: .65rem; color: #aaa; letter-spacing: .12em; }.subtask-more:hover, .subtask-more:focus-visible { background: #18151f; color: #fff; }.subtask-actions summary::-webkit-details-marker { display: none; }
+.subtask-menu { position: absolute; z-index: 3; top: calc(100% + .2rem); right: 0; display: grid; min-width: 10rem; border: 1px solid #3b3548; border-radius: .7rem; background: #111016; padding: .3rem; box-shadow: 0 1rem 2rem #000; }.subtask-menu button { min-height: 2.75rem; border-radius: .45rem; padding: .45rem .65rem; text-align: left; color: #d0d0d0; font-size: .8rem; }.subtask-menu button:hover, .subtask-menu button:focus-visible { background: #211b2d; color: #fff; }.subtask-menu button:disabled { cursor: not-allowed; color: #555; }.subtask-menu .subtask-menu-danger { color: #ff8a80; }
+.subtask-add-root, .subtask-action { min-height: 2.75rem; border-radius: .7rem; padding: .5rem .75rem; font-size: .8rem; }.subtask-add-root { margin-top: .7rem; border: 1px dashed #4a405d; color: #a88dff; }.subtask-add-root:hover, .subtask-add-root:focus-visible { border-color: #8052ff; background: #15131b; }
+.subtask-editor { margin: .5rem 0 .75rem; border: 1px solid #30283e; border-radius: .7rem; background: #0d0d10; padding: .7rem; }.subtask-editor label { display: block; color: #d0d0d0; font-size: .8rem; }.subtask-editor input { display: block; width: 100%; min-height: 2.75rem; margin-top: .35rem; border: 1px solid #3b3b42; border-radius: .55rem; background: #08080a; padding: .5rem .7rem; color: #fff; outline: none; }.subtask-editor input:focus { border-color: #8052ff; box-shadow: 0 0 0 3px #8052ff4d; }.subtask-editor-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; margin-top: .6rem; }.subtask-danger { min-height: 2.75rem; border-radius: .7rem; background: #4c1e22; padding: .5rem .75rem; color: #ffb0a8; font-size: .8rem; }.subtask-error { margin-top: .4rem; color: #ffb829; font-size: .75rem; }
+.subtask-dialog-backdrop { position: fixed; z-index: 60; inset: 0; display: grid; place-items: center; overflow-y: auto; background: #000000e8; padding: 1rem; }.subtask-dialog { width: min(100%, 28rem); border: 1px solid #3b3548; border-radius: 1rem; background: #0d0d10; padding: 1.25rem; box-shadow: 0 1.5rem 4rem #000; }.subtask-dialog h2 { margin-top: .5rem; color: #fff; font-size: 1.35rem; font-weight: 400; }.subtask-dialog > p:not(.event-eyebrow) { margin-top: .6rem; color: #aaa; font-size: .9rem; line-height: 1.5; }
+@media (max-width: 374px) { .task-tree-children { margin-left: .65rem; padding-left: .3rem; }.task-tree-row { gap: .25rem; }.task-tree-title { font-size: .82rem; }.subtask-menu { right: -.2rem; }.subtask-editor-actions > * { flex: 1; text-align: center; } }
+
 /* Events: the timeline owns its horizontal scroll, never the page. */
 .event-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 1rem; }
 .event-count { flex-shrink: 0; color: #a88dff; font-size: .95rem; }
