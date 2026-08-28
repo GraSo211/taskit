@@ -10,7 +10,9 @@
     "test": "vitest",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:validate": "prisma validate"
+    "prisma:validate": "prisma validate",
+    "prisma:deploy": "prisma migrate deploy",
+    "vercel-build": "if [ \"$VERCEL_ENV\" = \"production\" ]; then prisma generate && npm run prisma:deploy; else prisma generate; fi && next build"
   },
   "dependencies": {
     "@better-auth/prisma-adapter": "1.6.30",
