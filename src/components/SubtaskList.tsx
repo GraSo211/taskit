@@ -19,7 +19,7 @@ export function SubtaskList({ taskTitle, subtasks, onToggle }: SubtaskListProps)
     try { await onToggle(subtask.id, !subtask.completed); } finally { setPendingId(null); }
   }
 
-  return <div className="subtask-list mt-4 ml-14 border-l border-[#30283e] pl-4 sm:ml-16" aria-label={`Subtareas de ${taskTitle}`}>
+  return <div className="subtask-list mt-4 ml-2 border-l border-[#30283e] pl-3 sm:ml-16 sm:pl-4" aria-label={`Subtareas de ${taskTitle}`}>
     <div className="flex items-center justify-between gap-3">
       <p className="text-xs font-semibold uppercase tracking-[.16em] text-[#a88dff]">Subtareas <span className="text-[#777]">{completed}/{subtasks.length}</span></p>
       <span className="text-xs text-[#777]">{completed === subtasks.length ? "Completado" : "En curso"}</span>
