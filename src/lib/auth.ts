@@ -1,5 +1,6 @@
 import { APIError, betterAuth } from "better-auth";
 import { createAuthMiddleware } from "better-auth/api";
+import type { GoogleProfile } from "better-auth/social-providers";
 import { prismaAdapter } from "@better-auth/prisma-adapter";
 import { nextCookies } from "better-auth/next-js";
 
@@ -18,6 +19,21 @@ const googleProvider = googleOAuthConfigured
       clientSecret: googleClientSecret as string,
       disableSignUp: true,
       disableImplicitSignUp: true,
+      mapProfileToUser: (profile: GoogleProfile) => {
+        if (!profile.email_verified) {
+          throw APIError.from("FORBIDDEN", {
+            code: "GOOGLE_EMAIL_NOT_VERIFIED",
+            message: "Google must report a verified email address",
+          });
+        }
+        if (!isAllowedApplicationEmail(profile.email)) {
+          throw APIError.from("FORBIDDEN", {
+            code: "APPLICATION_ACCESS_DENIED",
+            message: "This account is not allowed to access the application",
+          });
+        }
+        return { emailVerified: true };
+      },
     }
   : undefined;
 
@@ -50,19 +66,13 @@ export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL,
   emailAndPassword: {
-    enabled: true,
-    disableSignUp: true,
+    enabled: false,
   },
   socialProviders: googleProvider ? { google: googleProvider } : {},
   account: {
     accountLinking: {
-      enabled: true,
+      enabled: false,
       disableImplicitLinking: true,
-      // This option only gates implicit linking. The retained local account may
-      // have a legacy false value and must still be able to use linkSocial().
-      requireLocalEmailVerified: false,
-      // An empty trusted list makes Better Auth require Google's
-      // provider-reported email_verified claim for OAuth/linking.
       trustedProviders: [],
       allowDifferentEmails: false,
     },

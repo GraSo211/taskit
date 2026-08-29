@@ -20,10 +20,14 @@ describe("authentication allowlist", () => {
 
     expect(source).toContain('context.path !== "/sign-in/email"');
     expect(source).toContain('code: "APPLICATION_ACCESS_DENIED"');
+    expect(source).toContain('code: "GOOGLE_EMAIL_NOT_VERIFIED"');
+    expect(source).toContain("profile.email_verified");
     expect(source).toContain("disableSignUp: true");
     expect(source).toContain("disableImplicitSignUp: true");
     expect(source).toContain("disableImplicitLinking: true");
-    expect(source).toContain("requireLocalEmailVerified: false");
+    expect(source).toContain("emailAndPassword: {");
+    expect(source).toContain("accountLinking: {");
+    expect(source).toContain("enabled: false");
     expect(source).toContain("trustedProviders: []");
     expect(source).not.toContain("requireEmailVerification");
   });
