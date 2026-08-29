@@ -51,7 +51,7 @@ describe("getDashboardData history", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSession.mockResolvedValue({
-      user: { id: "user-1", name: "User", email: "user@example.com", image: null },
+      user: { id: "user-1", name: "User", email: "santigs211@gmail.com", image: null },
     });
     mocks.findTasks.mockResolvedValue([dailyTask, weeklyTask]);
     mocks.findCompletions.mockResolvedValue([

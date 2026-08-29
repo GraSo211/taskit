@@ -20,10 +20,13 @@ import {
   normalizeTimezone,
   type DateKey,
 } from "@/lib/task-time";
+import { isAllowedApplicationEmail } from "@/lib/allowlist";
+
+export { ALLOWED_APPLICATION_EMAIL, isAllowedApplicationEmail } from "@/lib/allowlist";
 
 export async function getCurrentUser() {
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return null;
+  if (!session?.user || !isAllowedApplicationEmail(session.user.email)) return null;
 
   return {
     id: session.user.id,

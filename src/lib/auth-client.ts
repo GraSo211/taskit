@@ -4,7 +4,7 @@ import { createAuthClient } from "better-auth/react";
 // This deliberately keeps browser auth requests on the origin serving Taskit.
 export const authClient = createAuthClient();
 
-export const { signIn, signUp, signOut, useSession } = authClient;
+export const { signIn, signUp, signOut, useSession, linkSocial } = authClient;
 
 type AuthError = {
   code?: string;
