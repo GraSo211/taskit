@@ -99,6 +99,7 @@ export async function createTask(input: unknown) {
   });
 
   revalidatePath("/dashboard");
+  revalidatePath("/daily");
   return { id: task.id };
 }
 
@@ -151,6 +152,7 @@ export async function updateTask(input: unknown, values?: unknown) {
   });
 
   revalidatePath("/dashboard");
+  revalidatePath("/daily");
   return { id: task.id };
 }
 
@@ -177,10 +179,10 @@ async function setTaskCompletionForInput(input: unknown, completed: boolean) {
   }
 
   const todayKey = taskTodayKey(task);
-  if (data.dateKey !== todayKey) {
-    return { completed: false, stale: true };
+  if (data.dateKey > todayKey) {
+    throw new Error(`Task completion date ${data.dateKey} cannot be in the future`);
   }
-  const date = dateKeyToDbDate(todayKey);
+  const date = dateKeyToDbDate(data.dateKey);
 
   if (completed) {
     if (!isTaskScheduledOnDate({
@@ -188,8 +190,8 @@ async function setTaskCompletionForInput(input: unknown, completed: boolean) {
       targetCount: task.targetCount,
       scheduledWeekdays: task.scheduledWeekdays,
       startDate: task.startDate,
-    }, todayKey)) {
-      throw new Error("Task is not scheduled today");
+    }, data.dateKey)) {
+      throw new Error(`Task is not scheduled on ${data.dateKey}`);
     }
     await prisma.taskCompletion.upsert({
       where: { taskId_date: { taskId: task.id, date } },
@@ -201,6 +203,7 @@ async function setTaskCompletionForInput(input: unknown, completed: boolean) {
   }
 
   revalidatePath("/dashboard");
+  revalidatePath("/daily");
   return { completed };
 }
 

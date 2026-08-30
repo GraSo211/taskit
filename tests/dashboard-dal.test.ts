@@ -165,4 +165,30 @@ describe("getDashboardData history", () => {
       where: expect.objectContaining({ taskId: { in: ["daily-1", "weekly-1"] } }),
     }));
   });
+
+  it("projects a selected civil date into daily routine status and editability", async () => {
+    const data = await getDashboardData(new Date("2026-08-20T01:30:00.000Z"), "2026-08-21");
+    const task = data.tasks.find((item) => item.id === "daily-1");
+
+    expect(task).toMatchObject({
+      todayKey: "2026-08-19",
+      completedToday: true,
+      selectedDateKey: "2026-08-21",
+      completedOnSelectedDate: false,
+      canCompleteSelectedDate: false,
+    });
+    expect(data.tasks.some((item) => item.id === "daily-1")).toBe(true);
+  });
+
+  it("falls back to each task's local today for an invalid selected date", async () => {
+    const data = await getDashboardData(new Date("2026-08-20T01:30:00.000Z"), "2026-02-30");
+    const task = data.tasks.find((item) => item.id === "daily-1");
+
+    expect(task).toMatchObject({
+      selectedDateKey: "2026-08-19",
+      completedToday: true,
+      completedOnSelectedDate: true,
+      canCompleteSelectedDate: true,
+    });
+  });
 });

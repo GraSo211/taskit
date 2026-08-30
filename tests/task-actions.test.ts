@@ -137,22 +137,67 @@ describe("updateTask", () => {
     });
   });
 
-  it("returns an explicit stale result without mutating or revalidating", async () => {
+  it("rejects future dates without mutating or revalidating", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-19T02:00:00.000Z"));
-    const staleInput = { taskId: "task-1", dateKey: "2026-08-17" };
-    await expect(setTaskCompletion({ ...staleInput, completed: true })).resolves.toEqual({
-      completed: false,
-      stale: true,
-    });
-    await expect(completeTask(staleInput)).resolves.toEqual({ completed: false, stale: true });
-    await expect(revertTaskCompletion(staleInput)).resolves.toEqual({
-      completed: false,
-      stale: true,
-    });
+    const futureInput = { taskId: "task-1", dateKey: "2026-08-19" };
+    await expect(setTaskCompletion({ ...futureInput, completed: true })).rejects.toThrow(
+      "cannot be in the future",
+    );
+    await expect(completeTask(futureInput)).rejects.toThrow("cannot be in the future");
+    await expect(revertTaskCompletion(futureInput)).rejects.toThrow("cannot be in the future");
     expect(mocks.upsert).not.toHaveBeenCalled();
     expect(mocks.deleteMany).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("sets and clears completion for a scheduled past local date", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-20T12:00:00.000Z"));
+    mocks.getOwnedTask.mockResolvedValueOnce({
+      id: "task-1",
+      userId: "user-1",
+      frequency: "DAILY",
+      targetCount: 1,
+      scheduledWeekdays: [],
+      startDate: new Date("2026-08-01T00:00:00.000Z"),
+      timezone: "America/New_York",
+    });
+
+    const input = { taskId: "task-1", dateKey: "2026-08-19" };
+    await expect(completeTask(input)).resolves.toEqual({ completed: true });
+    expect(mocks.upsert).toHaveBeenCalledWith({
+      where: { taskId_date: { taskId: "task-1", date: new Date("2026-08-19T00:00:00.000Z") } },
+      create: { taskId: "task-1", date: new Date("2026-08-19T00:00:00.000Z") },
+      update: {},
+    });
+
+    await expect(revertTaskCompletion(input)).resolves.toEqual({ completed: false });
+    expect(mocks.deleteMany).toHaveBeenCalledWith({
+      where: { taskId: "task-1", date: new Date("2026-08-19T00:00:00.000Z") },
+    });
+    vi.useRealTimers();
+  });
+
+  it("validates the requested date when completing a routine", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-20T12:00:00.000Z"));
+    mocks.getOwnedTask.mockResolvedValueOnce({
+      id: "task-1",
+      userId: "user-1",
+      frequency: "DAILY",
+      targetCount: 1,
+      scheduledWeekdays: [1],
+      startDate: new Date("2026-08-01T00:00:00.000Z"),
+      timezone: "America/New_York",
+    });
+
+    await expect(completeTask({ taskId: "task-1", dateKey: "2026-08-19" })).rejects.toThrow(
+      "Task is not scheduled on 2026-08-19",
+    );
+    expect(mocks.upsert).not.toHaveBeenCalled();
+    expect(mocks.deleteMany).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
 
