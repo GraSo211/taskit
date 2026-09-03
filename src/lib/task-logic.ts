@@ -103,6 +103,10 @@ function makeProgress(completed: number, target: number): Progress {
   };
 }
 
+export function calculateWeeklyProgress(achievedCount: number, targetCount: number): Progress {
+  return makeProgress(achievedCount, targetCount);
+}
+
 export function calculateProjectProgress(subtasks: readonly ProjectSubtaskForProgress[]): Progress {
   const nested = subtasks.some((subtask) => subtask.children !== undefined);
   const leaves = nested

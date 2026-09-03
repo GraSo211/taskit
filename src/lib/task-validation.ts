@@ -145,6 +145,15 @@ export const setTaskCompletionSchema = taskCompletionDateSchema.extend({
   completed: z.boolean(),
 });
 
+export const setWeeklyCompletionCountSchema = z.object({
+  taskId: taskIdSchema,
+  weekStart: z
+    .string()
+    .refine((value) => /^\d{4}-\d{2}-\d{2}$/.test(value), "weekStart must use YYYY-MM-DD")
+    .transform(validateDateKey),
+  count: z.coerce.number().int().min(0),
+});
+
 export const subtaskCompletionSchema = z.object({
   taskId: taskIdSchema,
   subtaskId: taskIdSchema,

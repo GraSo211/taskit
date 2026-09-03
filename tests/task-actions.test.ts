@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   update: vi.fn(),
   upsert: vi.fn(),
   deleteMany: vi.fn(),
+  weeklyUpsert: vi.fn(),
+  weeklyDeleteMany: vi.fn(),
   subtaskUpdate: vi.fn(),
   subtaskFindMany: vi.fn(),
   subtaskCount: vi.fn(),
@@ -31,11 +33,15 @@ vi.mock("@/lib/prisma", () => ({
       upsert: mocks.upsert,
       deleteMany: mocks.deleteMany,
     },
+    weeklyTaskProgress: {
+      upsert: mocks.weeklyUpsert,
+      deleteMany: mocks.weeklyDeleteMany,
+    },
     $transaction: mocks.transaction,
   },
 }));
 
-const { completeTask, revertTaskCompletion, setSubtaskCompletion, setTaskCompletion, updateTask } =
+const { completeTask, revertTaskCompletion, setSubtaskCompletion, setTaskCompletion, setWeeklyCompletionCount, updateTask } =
   await import("../src/app/actions/tasks");
 
 describe("updateTask", () => {
@@ -219,6 +225,125 @@ describe("updateTask", () => {
     expect(mocks.deleteMany).toHaveBeenCalledWith({
       where: { taskId: "task-1", date: new Date("2026-08-19T00:00:00.000Z") },
     });
+    vi.useRealTimers();
+  });
+
+  it("sets an absolute weekly counter idempotently without capping it at the target", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-20T12:00:00.000Z"));
+    mocks.getOwnedTask.mockResolvedValue({
+      id: "weekly-1",
+      userId: "user-1",
+      type: "ROUTINE",
+      frequency: "WEEKLY",
+      targetCount: 2,
+      startDate: new Date("2026-08-01T00:00:00.000Z"),
+      timezone: "UTC",
+    });
+
+    await expect(setWeeklyCompletionCount({
+      taskId: "weekly-1",
+      weekStart: "2026-08-17",
+      count: 10,
+    })).resolves.toEqual({ taskId: "weekly-1", weekStart: "2026-08-17", count: 10 });
+    expect(mocks.weeklyUpsert).toHaveBeenCalledWith({
+      where: { taskId_weekStart: { taskId: "weekly-1", weekStart: new Date("2026-08-17T00:00:00.000Z") } },
+      create: { taskId: "weekly-1", weekStart: new Date("2026-08-17T00:00:00.000Z"), achievedCount: 10 },
+      update: { achievedCount: 10 },
+    });
+
+    await expect(setWeeklyCompletionCount({
+      taskId: "weekly-1",
+      weekStart: "2026-08-17",
+      count: 10,
+    })).resolves.toEqual({ taskId: "weekly-1", weekStart: "2026-08-17", count: 10 });
+    expect(mocks.weeklyUpsert).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it("clears a weekly counter with zero and rejects daily tasks", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-20T12:00:00.000Z"));
+    mocks.getOwnedTask.mockResolvedValueOnce({
+      id: "weekly-1",
+      userId: "user-1",
+      type: "ROUTINE",
+      frequency: "WEEKLY",
+      targetCount: 2,
+      startDate: new Date("2026-08-01T00:00:00.000Z"),
+      timezone: "UTC",
+    });
+
+    await expect(setWeeklyCompletionCount({
+      taskId: "weekly-1",
+      weekStart: "2026-08-17",
+      count: 0,
+    })).resolves.toEqual({ taskId: "weekly-1", weekStart: "2026-08-17", count: 0 });
+    expect(mocks.weeklyDeleteMany).toHaveBeenCalledWith({
+      where: { taskId: "weekly-1", weekStart: new Date("2026-08-17T00:00:00.000Z") },
+    });
+
+    await expect(setWeeklyCompletionCount({
+      taskId: "task-1",
+      weekStart: "2026-08-17",
+      count: 1,
+    })).rejects.toThrow("only available for weekly routines");
+    expect(mocks.weeklyUpsert).not.toHaveBeenCalled();
+
+    mocks.getOwnedTask.mockResolvedValueOnce({
+      id: "weekly-1",
+      userId: "user-1",
+      type: "ROUTINE",
+      frequency: "WEEKLY",
+      targetCount: 2,
+      startDate: new Date("2026-08-01T00:00:00.000Z"),
+      timezone: "UTC",
+    });
+    await expect(setTaskCompletion({
+      taskId: "weekly-1",
+      dateKey: "2026-08-20",
+      completed: true,
+    })).rejects.toThrow("only available for daily routines");
+    expect(mocks.upsert).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("accepts a past partial first week but rejects non-Monday and future weeks", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-20T12:00:00.000Z"));
+    mocks.getOwnedTask.mockResolvedValue({
+      id: "weekly-1",
+      userId: "user-1",
+      type: "ROUTINE",
+      frequency: "WEEKLY",
+      targetCount: 2,
+      startDate: new Date("2026-08-19T00:00:00.000Z"),
+      timezone: "UTC",
+    });
+
+    await expect(setWeeklyCompletionCount({
+      taskId: "weekly-1",
+      weekStart: "2026-08-17",
+      count: 1,
+    })).resolves.toMatchObject({ count: 1 });
+    expect(mocks.weeklyUpsert).toHaveBeenCalledTimes(1);
+
+    await expect(setWeeklyCompletionCount({
+      taskId: "weekly-1",
+      weekStart: "2026-08-18",
+      count: 1,
+    })).rejects.toThrow("must be a Monday");
+    await expect(setWeeklyCompletionCount({
+      taskId: "weekly-1",
+      weekStart: "2026-08-10",
+      count: 1,
+    })).rejects.toThrow("does not overlap");
+    await expect(setWeeklyCompletionCount({
+      taskId: "weekly-1",
+      weekStart: "2026-08-24",
+      count: 1,
+    })).rejects.toThrow("future");
+    expect(mocks.weeklyUpsert).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
 

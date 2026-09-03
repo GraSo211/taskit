@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   aggregateProgress,
   calculateProgress,
+  calculateWeeklyProgress,
   calculateProjectProgress,
   countScheduledDaysInWeek,
   getTaskWindow,
@@ -61,6 +62,16 @@ describe("civil date and timezone helpers", () => {
 });
 
 describe("task progress", () => {
+  it("calculates weekly counters without capping the stored count", () => {
+    expect(calculateWeeklyProgress(10, 2)).toEqual({
+      completed: 10,
+      target: 2,
+      percentage: 100,
+      isComplete: true,
+    });
+    expect(calculateWeeklyProgress(7, 10)).toMatchObject({ completed: 7, target: 10, percentage: 70 });
+  });
+
   it("treats an empty daily schedule as every day", () => {
     expect(isTaskScheduledOnDate({ frequency: "DAILY", targetCount: 1 }, date)).toBe(true);
     expect(

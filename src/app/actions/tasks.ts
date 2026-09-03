@@ -11,7 +11,7 @@ import {
 } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { isTaskScheduledOnDate } from "@/lib/task-logic";
-import { dateKeyToDbDate, localDateKey } from "@/lib/task-time";
+import { addDays, dateKeyToDbDate, dbDateToDateKey, getMondayWeekWindow as getDateKeyWeekWindow, localDateKey, weekdayOfDateKey } from "@/lib/task-time";
 import {
   addSubtaskSchema,
   deleteSubtaskSchema,
@@ -20,6 +20,7 @@ import {
   createTaskSchema,
   normalizeTaskData,
   setTaskCompletionSchema,
+  setWeeklyCompletionCountSchema,
   subtaskCompletionSchema,
   taskCompletionDateSchema,
   taskIdSchema,
@@ -174,8 +175,11 @@ async function setTaskCompletionForInput(input: unknown, completed: boolean) {
     completed,
   });
   const task = await assertOwnedTask(data.taskId);
-  if (task.type === "PROJECT" || !task.frequency) {
+  if (task.type === "PROJECT") {
     throw new Error("Project completion is derived from subtasks");
+  }
+  if ((task.type !== undefined && task.type !== "ROUTINE") || task.frequency !== "DAILY") {
+    throw new Error("Task completion is only available for daily routines");
   }
 
   const todayKey = taskTodayKey(task);
@@ -210,6 +214,46 @@ async function setTaskCompletionForInput(input: unknown, completed: boolean) {
 export async function setTaskCompletion(input: unknown) {
   const data = setTaskCompletionSchema.parse(input);
   return setTaskCompletionForInput(data, data.completed);
+}
+
+export async function setWeeklyCompletionCount(input: unknown) {
+  const data = setWeeklyCompletionCountSchema.parse(input);
+  const task = await assertOwnedTask(data.taskId);
+  if ((task.type !== undefined && task.type !== "ROUTINE") || task.frequency !== "WEEKLY") {
+    throw new Error("Weekly progress is only available for weekly routines");
+  }
+  if (weekdayOfDateKey(data.weekStart) !== 1) {
+    throw new Error("Week start must be a Monday");
+  }
+
+  const todayKey = taskTodayKey(task);
+  const currentWeekStart = getDateKeyWeekWindow(todayKey).start;
+  if (data.weekStart > currentWeekStart) {
+    throw new Error(`Weekly progress week ${data.weekStart} cannot be in the future`);
+  }
+
+  const startDateKey = dbDateToDateKey(task.startDate);
+  if (addDays(data.weekStart, 7) <= startDateKey) {
+    throw new Error("Weekly progress week does not overlap the task start date");
+  }
+
+  const weekStart = dateKeyToDbDate(data.weekStart);
+  if (data.count === 0) {
+    await prisma.weeklyTaskProgress.deleteMany({
+      where: { taskId: task.id, weekStart },
+    });
+  } else {
+    await prisma.weeklyTaskProgress.upsert({
+      where: { taskId_weekStart: { taskId: task.id, weekStart } },
+      create: { taskId: task.id, weekStart, achievedCount: data.count },
+      update: { achievedCount: data.count },
+    });
+  }
+
+  revalidatePath("/");
+  revalidatePath("/dashboard");
+  revalidatePath("/weekly");
+  return { taskId: task.id, weekStart: data.weekStart, count: data.count };
 }
 
 export async function completeTask(input: unknown) {

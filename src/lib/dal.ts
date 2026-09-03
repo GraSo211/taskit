@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import {
   aggregateProgress,
   calculateProgress,
+  calculateWeeklyProgress,
   calculateProjectProgress,
   isTaskScheduledOnDate,
   type TaskFrequency,
@@ -54,7 +55,6 @@ export type DashboardHistory = {
     weekEnd: string;
     completed: number;
     target: number;
-    days: Array<{ dateKey: string; completed: boolean }>;
   };
 };
 
@@ -102,7 +102,7 @@ function latestDateKey(...dateKeys: DateKey[]) {
 
 function getTaskHistory(
   task: Parameters<typeof calculateProgress>[0] & { frequency: "DAILY" | "WEEKLY" },
-  todayKey: DateKey,
+  selectedDateKey: DateKey,
   completionDates: readonly DateKey[],
   weeklyProgress: { completed: number; target: number },
 ): DashboardHistory {
@@ -113,11 +113,11 @@ function getTaskHistory(
       ? typeof task.startDate === "string"
         ? task.startDate
         : dbDateToDateKey(task.startDate)
-      : todayKey;
-    const startDate = latestDateKey(addDays(todayKey, -(DAILY_HISTORY_LENGTH - 1)), startDateKey);
+      : selectedDateKey;
+    const startDate = latestDateKey(addDays(selectedDateKey, -(DAILY_HISTORY_LENGTH - 1)), startDateKey);
     const points = [];
 
-    for (let dateKey = startDate; dateKey <= todayKey; dateKey = addDays(dateKey, 1)) {
+    for (let dateKey = startDate; dateKey <= selectedDateKey; dateKey = addDays(dateKey, 1)) {
       points.push({
         dateKey,
         completed: completionSet.has(dateKey),
@@ -125,17 +125,10 @@ function getTaskHistory(
       });
     }
 
-    return { daily: { startDate, endDate: todayKey, points } };
+    return { daily: { startDate, endDate: selectedDateKey, points } };
   }
 
-  const week = getMondayWeekWindow(todayKey);
-  const days = Array.from({ length: 7 }, (_, index) => {
-    const dateKey = addDays(week.start, index);
-    return {
-      dateKey,
-      completed: completionSet.has(dateKey) && isTaskScheduledOnDate(task, dateKey),
-    };
-  });
+  const week = getMondayWeekWindow(selectedDateKey);
 
   return {
     weekly: {
@@ -143,7 +136,6 @@ function getTaskHistory(
       weekEnd: addDays(week.start, 6),
       completed: weeklyProgress.completed,
       target: weeklyProgress.target,
-      days,
     },
   };
 }
@@ -180,39 +172,42 @@ export async function getDashboardData(date = new Date(), requestedSelectedDateK
   const selectedDateKey = isValidDateKey(requestedSelectedDateKey)
     ? requestedSelectedDateKey
     : undefined;
-  const eligibleSelectedDateTasks = eligibleTasks.filter(({ startDateKey, todayKey }) => {
+  const eligibleSelectedDateTasks = eligibleTasks.filter(({ task, startDateKey, todayKey }) => {
     const taskSelectedDateKey = selectedDateKey ?? todayKey;
+    if (selectedDateKey === undefined) return startDateKey <= taskSelectedDateKey;
+    if (task.frequency === "WEEKLY") {
+      const selectedWeekStart = getMondayWeekWindow(taskSelectedDateKey).start;
+      return addDays(selectedWeekStart, 7) > startDateKey;
+    }
     return startDateKey <= taskSelectedDateKey;
   });
-  const completionWindows = eligibleSelectedDateTasks.map(({ task, todayKey, startDateKey }) => {
+  const dailyTasks = eligibleSelectedDateTasks.filter(({ task }) => task.frequency === "DAILY");
+  const dailyCompletionWindows = dailyTasks.map(({ todayKey, startDateKey }) => {
     const taskSelectedDateKey = selectedDateKey ?? todayKey;
-    const week = getMondayWeekWindow(taskSelectedDateKey);
     const dailyHistoryStart = latestDateKey(
       addDays(taskSelectedDateKey, -(DAILY_HISTORY_LENGTH - 1)),
       startDateKey,
     );
     return {
-      start: task.frequency === "DAILY"
-        ? dailyHistoryStart
-        : latestDateKey(week.start, startDateKey),
-      end: task.frequency === "DAILY" ? addDays(taskSelectedDateKey, 1) : week.end,
+      start: dailyHistoryStart,
+      end: addDays(taskSelectedDateKey, 1),
     };
   });
-  const completions = completionWindows.length
+  const completions = dailyCompletionWindows.length
     ? await prisma.taskCompletion.findMany({
         where: {
-          taskId: { in: eligibleSelectedDateTasks.map(({ task }) => task.id) },
+          taskId: { in: dailyTasks.map(({ task }) => task.id) },
           date: {
             gte: dateKeyToDbDate(
-              completionWindows.reduce(
+              dailyCompletionWindows.reduce(
                 (minimum, window) => (window.start < minimum ? window.start : minimum),
-                completionWindows[0].start,
+                dailyCompletionWindows[0].start,
               ),
             ),
             lt: dateKeyToDbDate(
-              completionWindows.reduce(
+              dailyCompletionWindows.reduce(
                 (maximum, window) => (window.end > maximum ? window.end : maximum),
-                completionWindows[0].end,
+                dailyCompletionWindows[0].end,
               ),
             ),
           },
@@ -227,10 +222,53 @@ export async function getDashboardData(date = new Date(), requestedSelectedDateK
     completionsByTask.set(completion.taskId, dates);
   }
 
+  const weeklyTasks = eligibleSelectedDateTasks.filter(({ task }) => task.frequency === "WEEKLY");
+  const weeklyWindows = weeklyTasks.map(({ todayKey }) => {
+    const weekStart = getMondayWeekWindow(selectedDateKey ?? todayKey).start;
+    return { start: weekStart, end: addDays(weekStart, 7) };
+  });
+  const weeklyProgressRows = weeklyWindows.length
+    ? await prisma.weeklyTaskProgress.findMany({
+        where: {
+          taskId: { in: weeklyTasks.map(({ task }) => task.id) },
+          weekStart: {
+            gte: dateKeyToDbDate(
+              weeklyWindows.reduce(
+                (minimum, window) => (window.start < minimum ? window.start : minimum),
+                weeklyWindows[0].start,
+              ),
+            ),
+            lt: dateKeyToDbDate(
+              weeklyWindows.reduce(
+                (maximum, window) => (window.end > maximum ? window.end : maximum),
+                weeklyWindows[0].end,
+              ),
+            ),
+          },
+        },
+        orderBy: { weekStart: "asc" },
+      })
+    : [];
+  const weeklyProgressByTask = new Map(
+    weeklyProgressRows.map((row) => [`${row.taskId}:${dbDateToDateKey(row.weekStart)}`, row.achievedCount]),
+  );
+
   const taskData = eligibleSelectedDateTasks.map(({ task, timezone, todayKey }) => {
     const completionDates = completionsByTask.get(task.id) ?? [];
     const taskSelectedDateKey = selectedDateKey ?? todayKey;
-    const progress = calculateProgress(task, completionDates, taskSelectedDateKey);
+    const selectedWeekStart = getMondayWeekWindow(taskSelectedDateKey).start;
+    const completedInSelectedWeek = task.frequency === "WEEKLY"
+      ? weeklyProgressByTask.get(`${task.id}:${selectedWeekStart}`) ?? 0
+      : 0;
+    const progress = task.frequency === "WEEKLY"
+      ? {
+          ...calculateProgress(task, [], taskSelectedDateKey),
+          weekly: calculateWeeklyProgress(completedInSelectedWeek, task.targetCount),
+        }
+      : calculateProgress(task, completionDates, taskSelectedDateKey);
+    const canEditSelectedWeek = task.frequency === "WEEKLY"
+      && selectedWeekStart <= getMondayWeekWindow(todayKey).start
+      && addDays(selectedWeekStart, 7) > dbDateToDateKey(task.startDate);
     return {
       id: task.id,
       type: "ROUTINE" as const,
@@ -245,15 +283,18 @@ export async function getDashboardData(date = new Date(), requestedSelectedDateK
       startDate: dbDateToDateKey(task.startDate),
       progress,
       history: getTaskHistory(task, taskSelectedDateKey, completionDates, progress.weekly),
-      completedToday: completionDates.includes(todayKey),
+      completedToday: task.frequency === "DAILY" && completionDates.includes(todayKey),
       selectedDateKey: taskSelectedDateKey,
       completedOnSelectedDate: completionDates.includes(taskSelectedDateKey),
       canCompleteSelectedDate: taskSelectedDateKey <= todayKey,
+      selectedWeekStart,
+      completedInSelectedWeek,
+      canEditSelectedWeek,
     };
   });
-  const dashboardTasks = taskData.filter((task) =>
-    isTaskScheduledOnDate(task, task.selectedDateKey),
-  );
+  const dashboardTasks = taskData.filter((task) => task.frequency === "WEEKLY"
+    ? addDays(task.selectedWeekStart, 7) > task.startDate
+    : isTaskScheduledOnDate(task, task.selectedDateKey));
   const projects: DashboardProject[] = projectTasks.flatMap((task) => {
     const timezone = normalizeTimezone(task.timezone);
     const todayKey = localDateKey(date, timezone);

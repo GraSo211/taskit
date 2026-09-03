@@ -112,6 +112,7 @@ model Task {
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   completions       TaskCompletion[]
+  weeklyProgress     WeeklyTaskProgress[]
   subtasks          TaskSubtask[]
   eventDayMarks     EventDayMark[]
 
@@ -144,6 +145,18 @@ model TaskCompletion {
 
   @@unique([taskId, date])
   @@index([taskId, date])
+}
+
+model WeeklyTaskProgress {
+  task          Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId        String
+  weekStart     DateTime @db.Date
+  achievedCount Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@id([taskId, weekStart])
+  @@index([taskId, weekStart])
 }
 
 model EventDayMark {

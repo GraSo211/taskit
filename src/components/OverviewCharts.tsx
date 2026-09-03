@@ -1,4 +1,4 @@
-type Routine = { title: string; frequency: "DAILY" | "WEEKLY"; history?: { daily?: { points: Array<{ dateKey: string; completed: boolean; scheduled: boolean }> }; weekly?: { completed: number; target: number; days: Array<{ dateKey: string; completed: boolean }> } } };
+type Routine = { title: string; frequency: "DAILY" | "WEEKLY"; history?: { daily?: { points: Array<{ dateKey: string; completed: boolean; scheduled: boolean }> }; weekly?: { completed: number; target: number } } };
 
 function label(dateKey: string) {
   return new Intl.DateTimeFormat("es", { weekday: "short" }).format(new Date(`${dateKey}T12:00:00`)).replace(".", "");
@@ -11,7 +11,7 @@ export function OverviewCharts({ tasks }: { tasks: Routine[] }) {
   const bars = dates.map((dateKey) => ({ dateKey, completed: points.filter((point) => point.dateKey === dateKey && point.completed).length, scheduled: points.filter((point) => point.dateKey === dateKey && point.scheduled).length }));
   const max = Math.max(1, ...bars.map((bar) => bar.scheduled));
   const weekly = tasks.filter((task) => task.frequency === "WEEKLY");
-  const weeklyDone = weekly.reduce((total, task) => total + (task.history?.weekly?.days.filter((day) => day.completed).length ?? 0), 0);
+  const weeklyDone = weekly.reduce((total, task) => total + (task.history?.weekly?.completed ?? 0), 0);
   const weeklyTarget = weekly.reduce((total, task) => total + (task.history?.weekly?.target ?? 0), 0);
 
   return <section className="overview-charts" aria-labelledby="rhythm-title">

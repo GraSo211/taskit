@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   findTasks: vi.fn(),
   findCompletions: vi.fn(),
+  findWeeklyProgress: vi.fn(),
 }));
 
 vi.mock("next/headers", () => ({ headers: vi.fn(async () => new Headers()) }));
@@ -12,6 +13,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     task: { findMany: mocks.findTasks },
     taskCompletion: { findMany: mocks.findCompletions },
+    weeklyTaskProgress: { findMany: mocks.findWeeklyProgress },
   },
 }));
 
@@ -57,9 +59,10 @@ describe("getDashboardData history", () => {
     mocks.findCompletions.mockResolvedValue([
       { taskId: "daily-1", date: new Date("2026-08-18T00:00:00.000Z") },
       { taskId: "daily-1", date: new Date("2026-08-19T00:00:00.000Z") },
-      { taskId: "weekly-1", date: new Date("2026-08-17T00:00:00.000Z") },
-      { taskId: "weekly-1", date: new Date("2026-08-23T00:00:00.000Z") },
       { taskId: "other-user-task", date: new Date("2026-08-19T00:00:00.000Z") },
+    ]);
+    mocks.findWeeklyProgress.mockResolvedValue([
+      { taskId: "weekly-1", weekStart: new Date("2026-08-17T00:00:00.000Z"), achievedCount: 2 },
     ]);
   });
 
@@ -83,7 +86,7 @@ describe("getDashboardData history", () => {
     ]);
   });
 
-  it("clamps daily history and emits an inclusive Monday-to-Sunday weekly window", async () => {
+  it("clamps daily history and emits the selected Monday-to-Sunday weekly window", async () => {
     mocks.findTasks.mockResolvedValue([
       { ...dailyTask, startDate: new Date("2026-08-18T00:00:00.000Z") },
       weeklyTask,
@@ -98,21 +101,13 @@ describe("getDashboardData history", () => {
       "2026-08-18",
       "2026-08-19",
     ]);
-    expect(weekly?.history.weekly).toMatchObject({
+    expect(weekly?.history.weekly).toEqual({
       weekStart: "2026-08-17",
       weekEnd: "2026-08-23",
       completed: 2,
       target: 2,
     });
-    expect(weekly?.history.weekly?.days).toEqual([
-      { dateKey: "2026-08-17", completed: true },
-      { dateKey: "2026-08-18", completed: false },
-      { dateKey: "2026-08-19", completed: false },
-      { dateKey: "2026-08-20", completed: false },
-      { dateKey: "2026-08-21", completed: false },
-      { dateKey: "2026-08-22", completed: false },
-      { dateKey: "2026-08-23", completed: true },
-    ]);
+    expect(weekly?.history.weekly).not.toHaveProperty("days");
   });
 
   it("uses one user-scoped completion query covering the required history", async () => {
@@ -121,10 +116,10 @@ describe("getDashboardData history", () => {
     expect(mocks.findCompletions).toHaveBeenCalledTimes(1);
     expect(mocks.findCompletions).toHaveBeenCalledWith({
       where: {
-        taskId: { in: ["daily-1", "weekly-1"] },
+        taskId: { in: ["daily-1"] },
         date: {
           gte: new Date("2026-05-28T00:00:00.000Z"),
-          lt: new Date("2026-08-24T00:00:00.000Z"),
+          lt: new Date("2026-08-20T00:00:00.000Z"),
         },
       },
       orderBy: { date: "asc" },
@@ -162,7 +157,10 @@ describe("getDashboardData history", () => {
     expect(data.projects[0]).toMatchObject({ id: "project-1", completed: true });
     expect(data.projects[0].subtasks.map(({ id }) => id)).toEqual(["sub-1", "sub-2"]);
     expect(mocks.findCompletions).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ taskId: { in: ["daily-1", "weekly-1"] } }),
+      where: expect.objectContaining({ taskId: { in: ["daily-1"] } }),
+    }));
+    expect(mocks.findWeeklyProgress).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ taskId: { in: ["weekly-1"] } }),
     }));
   });
 
@@ -182,45 +180,68 @@ describe("getDashboardData history", () => {
 
   it("uses a selected date's week for weekly progress, history, and task visibility", async () => {
     mocks.findCompletions.mockResolvedValue([
-      { taskId: "weekly-1", date: new Date("2026-07-06T00:00:00.000Z") },
-      { taskId: "weekly-1", date: new Date("2026-07-12T00:00:00.000Z") },
+      { taskId: "daily-1", date: new Date("2026-07-09T00:00:00.000Z") },
+    ]);
+    mocks.findWeeklyProgress.mockResolvedValue([
+      { taskId: "weekly-1", weekStart: new Date("2026-07-06T00:00:00.000Z"), achievedCount: 10 },
     ]);
 
     const data = await getDashboardData(new Date("2026-08-20T01:30:00.000Z"), "2026-07-09");
     const weekly = data.tasks.find((item) => item.id === "weekly-1");
 
-    expect(data.progress.weekly).toMatchObject({ completed: 2, target: 2 });
-    expect(weekly?.history.weekly).toMatchObject({
+    expect(data.progress.weekly).toMatchObject({ completed: 10, target: 2, percentage: 100 });
+    expect(weekly).toMatchObject({
+      selectedWeekStart: "2026-07-06",
+      completedInSelectedWeek: 10,
+      canEditSelectedWeek: true,
+    });
+    expect(weekly?.history.weekly).toEqual({
       weekStart: "2026-07-06",
       weekEnd: "2026-07-12",
-      completed: 2,
+      completed: 10,
       target: 2,
     });
-    expect(weekly?.history.weekly?.days).toEqual([
-      { dateKey: "2026-07-06", completed: true },
-      { dateKey: "2026-07-07", completed: false },
-      { dateKey: "2026-07-08", completed: false },
-      { dateKey: "2026-07-09", completed: false },
-      { dateKey: "2026-07-10", completed: false },
-      { dateKey: "2026-07-11", completed: false },
-      { dateKey: "2026-07-12", completed: true },
-    ]);
     expect(data.tasks.map((task) => task.id)).toEqual(["weekly-1"]);
-    expect(mocks.findCompletions).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mocks.findWeeklyProgress).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
-        date: {
-          gte: new Date("2026-05-01T00:00:00.000Z"),
+        taskId: { in: ["weekly-1"] },
+        weekStart: {
+          gte: new Date("2026-07-06T00:00:00.000Z"),
           lt: new Date("2026-07-13T00:00:00.000Z"),
         },
       }),
     }));
   });
 
+  it("reads a partial first week and keeps a future selected week read-only", async () => {
+    mocks.findTasks.mockResolvedValue([{ ...weeklyTask, startDate: new Date("2026-07-09T00:00:00.000Z") }]);
+    mocks.findWeeklyProgress.mockResolvedValue([
+      { taskId: "weekly-1", weekStart: new Date("2026-07-06T00:00:00.000Z"), achievedCount: 1 },
+    ]);
+
+    const firstWeek = await getDashboardData(new Date("2026-08-20T12:00:00.000Z"), "2026-07-06");
+    expect(firstWeek.tasks[0]).toMatchObject({
+      selectedWeekStart: "2026-07-06",
+      completedInSelectedWeek: 1,
+      canEditSelectedWeek: true,
+    });
+
+    mocks.findWeeklyProgress.mockResolvedValue([
+      { taskId: "weekly-1", weekStart: new Date("2026-08-24T00:00:00.000Z"), achievedCount: 4 },
+    ]);
+    const futureWeek = await getDashboardData(new Date("2026-08-20T12:00:00.000Z"), "2026-08-27");
+    expect(futureWeek.tasks[0]).toMatchObject({
+      selectedWeekStart: "2026-08-24",
+      completedInSelectedWeek: 4,
+      canEditSelectedWeek: false,
+    });
+  });
+
   it("ends selected daily history and progress at the selected date", async () => {
     mocks.findCompletions.mockResolvedValue([
       { taskId: "daily-1", date: new Date("2026-08-10T00:00:00.000Z") },
-      { taskId: "weekly-1", date: new Date("2026-08-10T00:00:00.000Z") },
     ]);
+    mocks.findWeeklyProgress.mockResolvedValue([]);
 
     const data = await getDashboardData(new Date("2026-08-20T01:30:00.000Z"), "2026-08-10");
     const daily = data.tasks.find((item) => item.id === "daily-1");
@@ -241,7 +262,7 @@ describe("getDashboardData history", () => {
       where: expect.objectContaining({
         date: {
           gte: new Date("2026-05-19T00:00:00.000Z"),
-          lt: new Date("2026-08-17T00:00:00.000Z"),
+          lt: new Date("2026-08-11T00:00:00.000Z"),
         },
       }),
     }));
