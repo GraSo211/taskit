@@ -180,29 +180,28 @@ export async function getDashboardData(date = new Date(), requestedSelectedDateK
   const selectedDateKey = isValidDateKey(requestedSelectedDateKey)
     ? requestedSelectedDateKey
     : undefined;
-  const completionWindows = eligibleTasks.map(({ task, todayKey, startDateKey }) => {
-    const week = getMondayWeekWindow(todayKey);
-    const minimumRequiredDate = latestDateKey(week.start, startDateKey);
+  const eligibleSelectedDateTasks = eligibleTasks.filter(({ startDateKey, todayKey }) => {
+    const taskSelectedDateKey = selectedDateKey ?? todayKey;
+    return startDateKey <= taskSelectedDateKey;
+  });
+  const completionWindows = eligibleSelectedDateTasks.map(({ task, todayKey, startDateKey }) => {
+    const taskSelectedDateKey = selectedDateKey ?? todayKey;
+    const week = getMondayWeekWindow(taskSelectedDateKey);
     const dailyHistoryStart = latestDateKey(
-      addDays(todayKey, -(DAILY_HISTORY_LENGTH - 1)),
+      addDays(taskSelectedDateKey, -(DAILY_HISTORY_LENGTH - 1)),
       startDateKey,
     );
-    const currentStart = task.frequency === "DAILY"
-      ? dailyHistoryStart < week.start
-        ? dailyHistoryStart
-        : week.start
-      : minimumRequiredDate;
     return {
-      start: selectedDateKey && selectedDateKey < currentStart ? selectedDateKey : currentStart,
-      end: selectedDateKey && selectedDateKey >= week.end
-        ? addDays(selectedDateKey, 1)
-        : week.end,
+      start: task.frequency === "DAILY"
+        ? dailyHistoryStart
+        : latestDateKey(week.start, startDateKey),
+      end: task.frequency === "DAILY" ? addDays(taskSelectedDateKey, 1) : week.end,
     };
   });
   const completions = completionWindows.length
     ? await prisma.taskCompletion.findMany({
         where: {
-          taskId: { in: eligibleTasks.map(({ task }) => task.id) },
+          taskId: { in: eligibleSelectedDateTasks.map(({ task }) => task.id) },
           date: {
             gte: dateKeyToDbDate(
               completionWindows.reduce(
@@ -228,10 +227,10 @@ export async function getDashboardData(date = new Date(), requestedSelectedDateK
     completionsByTask.set(completion.taskId, dates);
   }
 
-  const taskData = eligibleTasks.map(({ task, timezone, todayKey }) => {
+  const taskData = eligibleSelectedDateTasks.map(({ task, timezone, todayKey }) => {
     const completionDates = completionsByTask.get(task.id) ?? [];
-    const progress = calculateProgress(task, completionDates, todayKey);
     const taskSelectedDateKey = selectedDateKey ?? todayKey;
+    const progress = calculateProgress(task, completionDates, taskSelectedDateKey);
     return {
       id: task.id,
       type: "ROUTINE" as const,
@@ -245,7 +244,7 @@ export async function getDashboardData(date = new Date(), requestedSelectedDateK
       todayKey,
       startDate: dbDateToDateKey(task.startDate),
       progress,
-      history: getTaskHistory(task, todayKey, completionDates, progress.weekly),
+      history: getTaskHistory(task, taskSelectedDateKey, completionDates, progress.weekly),
       completedToday: completionDates.includes(todayKey),
       selectedDateKey: taskSelectedDateKey,
       completedOnSelectedDate: completionDates.includes(taskSelectedDateKey),
@@ -253,10 +252,7 @@ export async function getDashboardData(date = new Date(), requestedSelectedDateK
     };
   });
   const dashboardTasks = taskData.filter((task) =>
-    isTaskScheduledOnDate(
-      task,
-      task.frequency === "DAILY" ? task.selectedDateKey : task.todayKey,
-    ),
+    isTaskScheduledOnDate(task, task.selectedDateKey),
   );
   const projects: DashboardProject[] = projectTasks.flatMap((task) => {
     const timezone = normalizeTimezone(task.timezone);
