@@ -113,7 +113,7 @@ export async function setEventDayOutcome(input: unknown) {
   }
 
   const todayKey = localDateKey(new Date(), event.timezone);
-  if (data.dateKey !== todayKey) throw new Error("Event marks are limited to today");
+  if (data.dateKey > todayKey) throw new Error("Event marks cannot be set for a future day");
 
   const startDateKey = dbDateToDateKey(event.startDate);
   const eventDuration = event.eventDuration;

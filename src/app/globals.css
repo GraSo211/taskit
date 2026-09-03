@@ -94,6 +94,8 @@ input, textarea, select { color-scheme: dark; }
 .daily-cell.is-pending, .legend-mark.is-pending { background: #ffb829; color: #000; }
 .daily-cell.is-unscheduled, .legend-mark.is-unscheduled { border: 1px solid #57515f; background: #17151a; color: #aaa; }
 .daily-cell.is-unavailable { border: 1px dashed #29252e; background: transparent; }
+.daily-cell:where(button) { width: 100%; border: 0; padding: 0; cursor: pointer; font: inherit; }
+.daily-cell:where(button):focus-visible, .weekly-chart-button:focus-visible { outline: 2px solid #ffb829; outline-offset: 2px; }
 .chart-legend { display: flex; flex-wrap: wrap; gap: .5rem .85rem; margin-top: .7rem; color: #aaa; font-size: .7rem; }
 .chart-legend span { display: inline-flex; align-items: center; gap: .35rem; }
 .legend-mark { display: inline-grid; width: 1rem; height: 1rem; place-items: center; border-radius: 3px; font-size: .65rem; font-style: normal; font-weight: 700; }
@@ -104,6 +106,7 @@ input, textarea, select { color-scheme: dark; }
 .weekly-bar { display: grid; width: 100%; max-width: 2rem; height: 2.25rem; place-items: center; border-radius: 5px 5px 3px 3px; font-size: .8rem; font-weight: 700; }
 .weekly-bar.is-complete { background: #8052ff; color: #fff; }
 .weekly-bar.is-pending { border: 1px solid #57515f; background: #17151a; color: #aaa; }
+.weekly-chart-button { display: block; width: 100%; max-width: 2rem; margin: 0 auto; padding: 0; border: 0; background: transparent; cursor: pointer; font: inherit; }
 .weekly-day-label { overflow: hidden; max-width: 100%; color: #888; font-size: .65rem; text-overflow: ellipsis; white-space: nowrap; }
 .chart-caption { margin-top: .7rem; color: #888; font-size: .75rem; }
 

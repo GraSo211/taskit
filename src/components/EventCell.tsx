@@ -14,7 +14,7 @@ const statusText: Record<EventDayStatus, string> = { UPCOMING: "próximo", PENDI
 
 export function EventCell({ taskId, dateKey, todayKey, status, outcome, mode, onOutcome }: EventCellProps) {
   const isToday = dateKey === todayKey;
-  const canEdit = isToday && (status === "PENDING" || status === "COMPLETED" || status === "FAILED");
+  const canEdit = dateKey <= todayKey && status !== "BLOCKED" && (status === "PENDING" || status === "COMPLETED" || status === "FAILED");
   const automatic = mode === "AUTOMATIC";
   const label = `${dateKey}: ${statusText[status]}${isToday ? ", hoy" : ""}`;
   if (!canEdit) return <span className={`event-cell event-cell-${status.toLowerCase()}`} role="gridcell" aria-label={label} title={label}>{status === "COMPLETED" ? "✓" : status === "FAILED" ? "!" : status === "BLOCKED" ? "×" : status === "PENDING" ? "•" : ""}</span>;

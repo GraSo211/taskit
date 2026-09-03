@@ -69,7 +69,7 @@ describe("event actions", () => {
     });
   });
 
-  it("allows only a current-day FAILED mark for automatic events", async () => {
+  it("preserves automatic-event outcome restrictions for current and past days", async () => {
     await expect(setEventDayOutcome({
       taskId: "event-1",
       dateKey: "2026-08-20",
@@ -87,9 +87,57 @@ describe("event actions", () => {
     await expect(setEventDayOutcome({
       taskId: "event-1",
       dateKey: "2026-08-19",
+      outcome: "COMPLETED",
+    })).rejects.toThrow("Automatic events only accept FAILED or null");
+    expect(mocks.upsert).toHaveBeenCalledTimes(1);
+
+    await expect(setEventDayOutcome({
+      taskId: "event-1",
+      dateKey: "2026-08-19",
       outcome: "FAILED",
-    })).rejects.toThrow("limited to today");
-    vi.useRealTimers();
+    })).resolves.toMatchObject({ taskId: "event-1", dateKey: "2026-08-19", outcome: "FAILED" });
+    expect(mocks.upsert).toHaveBeenCalledTimes(2);
+  });
+
+  it("allows marking and clearing a past day", async () => {
+    mocks.getOwnedEvent.mockResolvedValue({
+      id: "event-1",
+      type: "EVENT",
+      eventMode: "MANUAL",
+      eventDuration: 5,
+      eventFailurePolicy: "CONTINUE",
+      timezone: "UTC",
+      startDate: new Date("2026-08-18T00:00:00.000Z"),
+    });
+
+    await expect(setEventDayOutcome({
+      taskId: "event-1",
+      dateKey: "2026-08-19",
+      outcome: "COMPLETED",
+    })).resolves.toMatchObject({ taskId: "event-1", dateKey: "2026-08-19", outcome: "COMPLETED" });
+    expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { taskId_date: { taskId: "event-1", date: new Date("2026-08-19T00:00:00.000Z") } },
+      create: expect.objectContaining({ outcome: "COMPLETED" }),
+    }));
+
+    await expect(setEventDayOutcome({
+      taskId: "event-1",
+      dateKey: "2026-08-19",
+      outcome: null,
+    })).resolves.toMatchObject({ taskId: "event-1", dateKey: "2026-08-19", outcome: null });
+    expect(mocks.deleteMany).toHaveBeenCalledWith({
+      where: { taskId: "event-1", date: new Date("2026-08-19T00:00:00.000Z") },
+    });
+  });
+
+  it("rejects future days without mutating marks", async () => {
+    await expect(setEventDayOutcome({
+      taskId: "event-1",
+      dateKey: "2026-08-21",
+      outcome: "FAILED",
+    })).rejects.toThrow("future day");
+    expect(mocks.upsert).not.toHaveBeenCalled();
+    expect(mocks.deleteMany).not.toHaveBeenCalled();
   });
 
   it("rejects every mark for a day blocked by an earlier STOP failure", async () => {
