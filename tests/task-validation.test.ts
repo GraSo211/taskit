@@ -13,13 +13,13 @@ const baseTask = {
 };
 
 describe("task schedule validation", () => {
-  it("normalizes selected weekdays and forces daily target to one", () => {
+  it("normalizes selected weekdays and preserves the daily target count", () => {
     const task = normalizeTaskData(
       createTaskSchema.parse({ ...baseTask, scheduledWeekdays: [5, 1, 5] }),
     );
 
     expect(task.scheduledWeekdays).toEqual([1, 5]);
-    expect(task.targetCount).toBe(1);
+    expect(task.targetCount).toBe(20);
   });
 
   it("clears weekdays for weekly tasks", () => {

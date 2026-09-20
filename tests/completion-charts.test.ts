@@ -6,8 +6,8 @@ describe("buildDailyCalendarGrid", () => {
   it("keeps consecutive civil dates in separate weekday cells with their status", () => {
     const cells = buildDailyCalendarGrid(
       [
-        { dateKey: "2026-08-18", completed: true, scheduled: true },
-        { dateKey: "2026-08-19", completed: false, scheduled: true },
+        { dateKey: "2026-08-18", completed: true, scheduled: true, count: 1 },
+        { dateKey: "2026-08-19", completed: false, scheduled: true, count: 0 },
       ],
       1,
     );

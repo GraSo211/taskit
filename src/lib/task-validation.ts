@@ -154,6 +154,15 @@ export const setWeeklyCompletionCountSchema = z.object({
   count: z.coerce.number().int().min(0),
 });
 
+export const setDailyCompletionCountSchema = z.object({
+  taskId: taskIdSchema,
+  dateKey: z
+    .string()
+    .refine((value) => /^\d{4}-\d{2}-\d{2}$/.test(value), "dateKey must use YYYY-MM-DD")
+    .transform(validateDateKey),
+  count: z.coerce.number().int().min(0),
+});
+
 export const subtaskCompletionSchema = z.object({
   taskId: taskIdSchema,
   subtaskId: taskIdSchema,
@@ -207,7 +216,7 @@ export function normalizeTaskData<
     return { ...data, scheduledWeekdays: [] } as T;
   }
 
-  return { ...data, targetCount: 1 } as T;
+  return { ...data } as T;
 }
 
 export type CreateTaskInput = z.input<typeof createTaskSchema>;

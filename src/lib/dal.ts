@@ -48,7 +48,7 @@ export type DashboardHistory = {
   daily?: {
     startDate: string;
     endDate: string;
-    points: Array<{ dateKey: string; completed: boolean; scheduled: boolean }>;
+    points: Array<{ dateKey: string; completed: boolean; scheduled: boolean; count: number }>;
   };
   weekly?: {
     weekStart: string;
@@ -103,11 +103,9 @@ function latestDateKey(...dateKeys: DateKey[]) {
 function getTaskHistory(
   task: Parameters<typeof calculateProgress>[0] & { frequency: "DAILY" | "WEEKLY" },
   selectedDateKey: DateKey,
-  completionDates: readonly DateKey[],
+  completionCounts: ReadonlyMap<DateKey, number>,
   weeklyProgress: { completed: number; target: number },
 ): DashboardHistory {
-  const completionSet = new Set(completionDates);
-
   if (task.frequency === "DAILY") {
     const startDateKey = task.startDate
       ? typeof task.startDate === "string"
@@ -118,10 +116,12 @@ function getTaskHistory(
     const points = [];
 
     for (let dateKey = startDate; dateKey <= selectedDateKey; dateKey = addDays(dateKey, 1)) {
+      const count = completionCounts.get(dateKey) ?? 0;
       points.push({
         dateKey,
-        completed: completionSet.has(dateKey),
+        completed: count >= task.targetCount,
         scheduled: isTaskScheduledOnDate(task, dateKey),
+        count,
       });
     }
 
@@ -138,6 +138,13 @@ function getTaskHistory(
       target: weeklyProgress.target,
     },
   };
+}
+
+function expandCompletionDates(counts: ReadonlyMap<DateKey, number> | undefined): DateKey[] {
+  if (!counts) return [];
+  const dates: DateKey[] = [];
+  for (const [dateKey, count] of counts) for (let index = 0; index < count; index += 1) dates.push(dateKey);
+  return dates;
 }
 
 export async function getDashboardData(date = new Date(), requestedSelectedDateKey?: string) {
@@ -215,11 +222,12 @@ export async function getDashboardData(date = new Date(), requestedSelectedDateK
         orderBy: { date: "asc" },
       })
     : [];
-  const completionsByTask = new Map<string, DateKey[]>();
+  const completionsByTask = new Map<string, Map<DateKey, number>>();
   for (const completion of completions) {
-    const dates = completionsByTask.get(completion.taskId) ?? [];
-    dates.push(dbDateToDateKey(completion.date));
-    completionsByTask.set(completion.taskId, dates);
+    const key = dbDateToDateKey(completion.date);
+    const counts = completionsByTask.get(completion.taskId) ?? new Map<DateKey, number>();
+    counts.set(key, (counts.get(key) ?? 0) + (completion.count ?? 1));
+    completionsByTask.set(completion.taskId, counts);
   }
 
   const weeklyTasks = eligibleSelectedDateTasks.filter(({ task }) => task.frequency === "WEEKLY");
@@ -254,7 +262,8 @@ export async function getDashboardData(date = new Date(), requestedSelectedDateK
   );
 
   const taskData = eligibleSelectedDateTasks.map(({ task, timezone, todayKey }) => {
-    const completionDates = completionsByTask.get(task.id) ?? [];
+    const completionCounts = completionsByTask.get(task.id) ?? new Map<DateKey, number>();
+    const completionDates = expandCompletionDates(completionCounts);
     const taskSelectedDateKey = selectedDateKey ?? todayKey;
     const selectedWeekStart = getMondayWeekWindow(taskSelectedDateKey).start;
     const completedInSelectedWeek = task.frequency === "WEEKLY"
@@ -282,10 +291,11 @@ export async function getDashboardData(date = new Date(), requestedSelectedDateK
       todayKey,
       startDate: dbDateToDateKey(task.startDate),
       progress,
-      history: getTaskHistory(task, taskSelectedDateKey, completionDates, progress.weekly),
-      completedToday: task.frequency === "DAILY" && completionDates.includes(todayKey),
+      history: getTaskHistory(task, taskSelectedDateKey, completionCounts, progress.weekly),
+      completedToday: task.frequency === "DAILY" && (completionCounts.get(todayKey) ?? 0) >= task.targetCount,
       selectedDateKey: taskSelectedDateKey,
-      completedOnSelectedDate: completionDates.includes(taskSelectedDateKey),
+      completedOnSelectedDate: (completionCounts.get(taskSelectedDateKey) ?? 0) >= task.targetCount,
+      completedCountOnSelectedDate: completionCounts.get(taskSelectedDateKey) ?? 0,
       canCompleteSelectedDate: taskSelectedDateKey <= todayKey,
       selectedWeekStart,
       completedInSelectedWeek,

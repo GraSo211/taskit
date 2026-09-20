@@ -19,6 +19,7 @@ import {
   renameSubtaskSchema,
   createTaskSchema,
   normalizeTaskData,
+  setDailyCompletionCountSchema,
   setTaskCompletionSchema,
   setWeeklyCompletionCountSchema,
   subtaskCompletionSchema,
@@ -199,8 +200,8 @@ async function setTaskCompletionForInput(input: unknown, completed: boolean) {
     }
     await prisma.taskCompletion.upsert({
       where: { taskId_date: { taskId: task.id, date } },
-      create: { taskId: task.id, date },
-      update: {},
+      create: { taskId: task.id, date, count: task.targetCount },
+      update: { count: task.targetCount },
     });
   } else {
     await prisma.taskCompletion.deleteMany({ where: { taskId: task.id, date } });
@@ -254,6 +255,34 @@ export async function setWeeklyCompletionCount(input: unknown) {
   revalidatePath("/dashboard");
   revalidatePath("/weekly");
   return { taskId: task.id, weekStart: data.weekStart, count: data.count };
+}
+
+export async function setDailyCompletionCount(input: unknown) {
+  const data = setDailyCompletionCountSchema.parse(input);
+  const task = await assertOwnedTask(data.taskId);
+  if ((task.type !== undefined && task.type !== "ROUTINE") || task.frequency !== "DAILY") {
+    throw new Error("Daily repetitions are only available for daily routines");
+  }
+  const todayKey = taskTodayKey(task);
+  if (data.dateKey > todayKey) {
+    throw new Error(`Daily repetition date ${data.dateKey} cannot be in the future`);
+  }
+  if (data.count > 0 && !isTaskScheduledOnDate({ frequency: task.frequency, targetCount: task.targetCount, scheduledWeekdays: task.scheduledWeekdays, startDate: task.startDate }, data.dateKey)) {
+    throw new Error(`Task is not scheduled on ${data.dateKey}`);
+  }
+  const date = dateKeyToDbDate(data.dateKey);
+  if (data.count === 0) {
+    await prisma.taskCompletion.deleteMany({ where: { taskId: task.id, date } });
+  } else {
+    await prisma.taskCompletion.upsert({
+      where: { taskId_date: { taskId: task.id, date } },
+      create: { taskId: task.id, date, count: data.count },
+      update: { count: data.count },
+    });
+  }
+  revalidatePath("/dashboard");
+  revalidatePath("/daily");
+  return { taskId: task.id, dateKey: data.dateKey, count: data.count };
 }
 
 export async function completeTask(input: unknown) {

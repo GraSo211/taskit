@@ -141,6 +141,7 @@ model TaskCompletion {
   taskId    String
   task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   date      DateTime @db.Date
+  count     Int      @default(1)
   createdAt DateTime @default(now())
 
   @@unique([taskId, date])

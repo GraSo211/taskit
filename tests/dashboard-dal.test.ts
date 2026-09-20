@@ -79,10 +79,11 @@ describe("getDashboardData history", () => {
       dateKey: "2026-05-28",
       completed: false,
       scheduled: false,
+      count: 0,
     });
     expect(task?.history.daily?.points.slice(-2)).toEqual([
-      { dateKey: "2026-08-18", completed: true, scheduled: false },
-      { dateKey: "2026-08-19", completed: true, scheduled: true },
+      { dateKey: "2026-08-18", completed: true, scheduled: false, count: 1 },
+      { dateKey: "2026-08-19", completed: true, scheduled: true, count: 1 },
     ]);
   });
 
@@ -173,6 +174,7 @@ describe("getDashboardData history", () => {
       completedToday: true,
       selectedDateKey: "2026-08-21",
       completedOnSelectedDate: false,
+      completedCountOnSelectedDate: 0,
       canCompleteSelectedDate: false,
     });
     expect(data.tasks.some((item) => item.id === "daily-1")).toBe(true);
@@ -257,6 +259,7 @@ describe("getDashboardData history", () => {
       dateKey: "2026-08-10",
       completed: true,
       scheduled: true,
+      count: 1,
     });
     expect(mocks.findCompletions).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
@@ -276,6 +279,7 @@ describe("getDashboardData history", () => {
       selectedDateKey: "2026-08-19",
       completedToday: true,
       completedOnSelectedDate: true,
+      completedCountOnSelectedDate: 1,
       canCompleteSelectedDate: true,
     });
   });

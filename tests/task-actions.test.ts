@@ -41,7 +41,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-const { completeTask, revertTaskCompletion, setSubtaskCompletion, setTaskCompletion, setWeeklyCompletionCount, updateTask } =
+const { completeTask, revertTaskCompletion, setDailyCompletionCount, setSubtaskCompletion, setTaskCompletion, setWeeklyCompletionCount, updateTask } =
   await import("../src/app/actions/tasks");
 
 describe("updateTask", () => {
@@ -175,8 +175,8 @@ describe("updateTask", () => {
     await expect(completeTask(input)).resolves.toEqual({ completed: true });
     expect(mocks.upsert).toHaveBeenCalledWith({
       where: { taskId_date: { taskId: "task-1", date: new Date("2026-08-19T00:00:00.000Z") } },
-      create: { taskId: "task-1", date: new Date("2026-08-19T00:00:00.000Z") },
-      update: {},
+      create: { taskId: "task-1", date: new Date("2026-08-19T00:00:00.000Z"), count: 1 },
+      update: { count: 1 },
     });
 
     await expect(revertTaskCompletion(input)).resolves.toEqual({ completed: false });
@@ -215,8 +215,8 @@ describe("updateTask", () => {
     await expect(setTaskCompletion(input)).resolves.toEqual({ completed: true });
     expect(mocks.upsert).toHaveBeenCalledWith({
       where: { taskId_date: { taskId: "task-1", date: new Date("2026-08-19T00:00:00.000Z") } },
-      create: { taskId: "task-1", date: new Date("2026-08-19T00:00:00.000Z") },
-      update: {},
+      create: { taskId: "task-1", date: new Date("2026-08-19T00:00:00.000Z"), count: 1 },
+      update: { count: 1 },
     });
 
     await expect(setTaskCompletion({ ...input, completed: false })).resolves.toEqual({
@@ -344,6 +344,69 @@ describe("updateTask", () => {
       count: 1,
     })).rejects.toThrow("future");
     expect(mocks.weeklyUpsert).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it("sets and clears an absolute daily repetition count and validates the date", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-20T12:00:00.000Z"));
+
+    await expect(setDailyCompletionCount({
+      taskId: "task-1",
+      dateKey: "2026-08-19",
+      count: 3,
+    })).resolves.toEqual({ taskId: "task-1", dateKey: "2026-08-19", count: 3 });
+    expect(mocks.upsert).toHaveBeenCalledWith({
+      where: { taskId_date: { taskId: "task-1", date: new Date("2026-08-19T00:00:00.000Z") } },
+      create: { taskId: "task-1", date: new Date("2026-08-19T00:00:00.000Z"), count: 3 },
+      update: { count: 3 },
+    });
+
+    await expect(setDailyCompletionCount({
+      taskId: "task-1",
+      dateKey: "2026-08-19",
+      count: 0,
+    })).resolves.toEqual({ taskId: "task-1", dateKey: "2026-08-19", count: 0 });
+    expect(mocks.deleteMany).toHaveBeenCalledWith({
+      where: { taskId: "task-1", date: new Date("2026-08-19T00:00:00.000Z") },
+    });
+
+    await expect(setDailyCompletionCount({
+      taskId: "task-1",
+      dateKey: "2026-08-21",
+      count: 1,
+    })).rejects.toThrow("cannot be in the future");
+
+    mocks.getOwnedTask.mockResolvedValueOnce({
+      id: "weekly-1",
+      userId: "user-1",
+      type: "ROUTINE",
+      frequency: "WEEKLY",
+      targetCount: 2,
+      startDate: new Date("2026-08-01T00:00:00.000Z"),
+      timezone: "UTC",
+    });
+    await expect(setDailyCompletionCount({
+      taskId: "weekly-1",
+      dateKey: "2026-08-19",
+      count: 1,
+    })).rejects.toThrow("Daily repetitions are only available for daily routines");
+
+    mocks.getOwnedTask.mockResolvedValueOnce({
+      id: "task-1",
+      userId: "user-1",
+      frequency: "DAILY",
+      targetCount: 3,
+      scheduledWeekdays: [1],
+      startDate: new Date("2026-08-01T00:00:00.000Z"),
+      timezone: "America/New_York",
+    });
+    await expect(setDailyCompletionCount({
+      taskId: "task-1",
+      dateKey: "2026-08-19",
+      count: 1,
+    })).rejects.toThrow("Task is not scheduled on 2026-08-19");
+
     vi.useRealTimers();
   });
 
