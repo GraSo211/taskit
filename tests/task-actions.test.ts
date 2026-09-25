@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   getOwnedTask: vi.fn(),
   getOwnedProjectTask: vi.fn(),
   getOwnedSubtask: vi.fn(),
+  getOwnedTaskIncludingDeleted: vi.fn(),
   requireCurrentUser: vi.fn(),
   revalidatePath: vi.fn(),
   update: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock("@/lib/dal", () => ({
   getOwnedTask: mocks.getOwnedTask,
   getOwnedProjectTask: mocks.getOwnedProjectTask,
   getOwnedSubtask: mocks.getOwnedSubtask,
+  getOwnedTaskIncludingDeleted: mocks.getOwnedTaskIncludingDeleted,
   requireCurrentUser: mocks.requireCurrentUser,
 }));
 vi.mock("@/lib/prisma", () => ({
@@ -41,7 +43,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-const { completeTask, revertTaskCompletion, setDailyCompletionCount, setSubtaskCompletion, setTaskCompletion, setWeeklyCompletionCount, updateTask } =
+const { completeTask, deleteProject, restoreTask, revertTaskCompletion, setDailyCompletionCount, setSubtaskCompletion, setTaskCompletion, setWeeklyCompletionCount, updateTask } =
   await import("../src/app/actions/tasks");
 
 describe("updateTask", () => {
@@ -445,5 +447,64 @@ describe("updateTask", () => {
       setSubtaskCompletion({ taskId: "project-1", subtaskId: "other-subtask", completed: true }),
     ).rejects.toThrow("Subtask not found");
     expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("deleteProject / restoreTask", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireCurrentUser.mockResolvedValue({ id: "user-1" });
+    mocks.update.mockResolvedValue({ id: "project-1" });
+  });
+
+  it("soft deletes an owned project and revalidates history", async () => {
+    mocks.getOwnedProjectTask.mockResolvedValueOnce({ id: "project-1" });
+
+    await expect(deleteProject({ taskId: "project-1" })).resolves.toEqual({ id: "project-1" });
+
+    expect(mocks.getOwnedProjectTask).toHaveBeenCalledWith("project-1", "user-1");
+    expect(mocks.update).toHaveBeenCalledWith({
+      where: { id: "project-1" },
+      data: { deletedAt: expect.any(Date) },
+    });
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/history");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/projects");
+  });
+
+  it("rejects a project the current user does not own", async () => {
+    mocks.getOwnedProjectTask.mockResolvedValueOnce(null);
+
+    await expect(deleteProject({ taskId: "other-project" })).rejects.toThrow(
+      "Project task not found",
+    );
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("restores a soft-deleted task and clears deletedAt", async () => {
+    mocks.getOwnedTaskIncludingDeleted.mockResolvedValueOnce({
+      id: "event-1",
+      type: "EVENT",
+    });
+
+    await expect(restoreTask({ taskId: "event-1" })).resolves.toEqual({
+      id: "event-1",
+      type: "EVENT",
+    });
+
+    expect(mocks.getOwnedTaskIncludingDeleted).toHaveBeenCalledWith("event-1", "user-1");
+    expect(mocks.update).toHaveBeenCalledWith({
+      where: { id: "event-1" },
+      data: { deletedAt: null },
+    });
+    for (const path of ["/", "/dashboard", "/daily", "/weekly", "/projects", "/events", "/history"]) {
+      expect(mocks.revalidatePath).toHaveBeenCalledWith(path);
+    }
+  });
+
+  it("rejects restoring a task that is not visible to the current user", async () => {
+    mocks.getOwnedTaskIncludingDeleted.mockResolvedValueOnce(null);
+
+    await expect(restoreTask({ taskId: "other-task" })).rejects.toThrow("Task not found");
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 });

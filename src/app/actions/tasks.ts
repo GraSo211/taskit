@@ -7,6 +7,7 @@ import {
   getOwnedProjectTask,
   getOwnedSubtask,
   getOwnedTask,
+  getOwnedTaskIncludingDeleted,
   requireCurrentUser,
 } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
@@ -14,11 +15,13 @@ import { isTaskScheduledOnDate } from "@/lib/task-logic";
 import { addDays, dateKeyToDbDate, dbDateToDateKey, getMondayWeekWindow as getDateKeyWeekWindow, localDateKey, weekdayOfDateKey } from "@/lib/task-time";
 import {
   addSubtaskSchema,
+  deleteProjectSchema,
   deleteSubtaskSchema,
   moveSubtaskSchema,
   renameSubtaskSchema,
   createTaskSchema,
   normalizeTaskData,
+  restoreTaskSchema,
   setDailyCompletionCountSchema,
   setTaskCompletionSchema,
   setWeeklyCompletionCountSchema,
@@ -347,6 +350,7 @@ async function persistDerivedSubtaskCompletion(
 function revalidateProjectViews() {
   revalidatePath("/dashboard");
   revalidatePath("/projects");
+  revalidatePath("/history");
 }
 
 async function getProjectForAction(taskId: string, userId: string) {
@@ -497,3 +501,28 @@ export async function completeSubtask(input: unknown) {
 export async function revertSubtaskCompletion(input: unknown) {
   return setSubtaskCompletion({ ...(input as Record<string, unknown>), completed: false });
 }
+
+export async function deleteProject(input: unknown) {
+  const data = deleteProjectSchema.parse(input);
+  const user = await requireCurrentUser();
+  const project = await getOwnedProjectTask(data.taskId, user.id);
+  if (!project) throw new Error("Project task not found");
+  await prisma.task.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
+  revalidateProjectViews();
+  return { id: project.id };
+}
+export const deleteTask = deleteProject;
+export const softDeleteProject = deleteProject;
+
+export async function restoreTask(input: unknown) {
+  const data = restoreTaskSchema.parse(input);
+  const user = await requireCurrentUser();
+  const task = await getOwnedTaskIncludingDeleted(data.taskId, user.id);
+  if (!task) throw new Error("Task not found");
+  await prisma.task.update({ where: { id: task.id }, data: { deletedAt: null } });
+  for (const path of ["/", "/dashboard", "/daily", "/weekly", "/projects", "/events", "/history"]) {
+    revalidatePath(path);
+  }
+  return { id: task.id, type: task.type };
+}
+export const restoreProject = restoreTask;

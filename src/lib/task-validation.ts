@@ -120,6 +120,8 @@ const eventFieldsSchema = z.object({
 export const createEventSchema = eventFieldsSchema;
 export const updateEventSchema = eventFieldsSchema.extend({ taskId: taskIdSchema });
 export const deleteEventSchema = z.object({ taskId: taskIdSchema });
+export const deleteProjectSchema = z.object({ taskId: taskIdSchema });
+export const restoreTaskSchema = z.object({ taskId: taskIdSchema });
 
 export const eventDayMarkSchema = z.object({
   taskId: taskIdSchema,

@@ -105,6 +105,7 @@ model Task {
   timezone          String           @default("UTC")
   startDate         DateTime         @db.Date
   isActive          Boolean          @default(true)
+  deletedAt         DateTime?
   completed         Boolean          @default(false)
   eventMode         EventMode?
   eventDuration     Int?
@@ -117,6 +118,7 @@ model Task {
   eventDayMarks     EventDayMark[]
 
   @@index([userId, isActive])
+  @@index([userId, deletedAt])
 }
 
 model TaskSubtask {

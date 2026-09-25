@@ -15,6 +15,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("@/lib/dal", () => ({
   getOwnedEvent: mocks.getOwnedEvent,
+  getOwnedTask: vi.fn(),
+  getOwnedProjectTask: vi.fn(),
+  getOwnedSubtask: vi.fn(),
+  getOwnedTaskIncludingDeleted: vi.fn(),
   requireCurrentUser: mocks.requireCurrentUser,
 }));
 vi.mock("@/lib/prisma", () => ({
@@ -24,7 +28,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-const { createEvent, setEventDayOutcome, updateEvent } = await import("../src/app/actions/events");
+const { createEvent, deleteEvent, setEventDayOutcome, updateEvent } = await import("../src/app/actions/events");
 
 describe("event actions", () => {
   beforeEach(() => {
@@ -198,5 +202,18 @@ describe("event actions", () => {
       failurePolicy: "STOP",
     })).rejects.toThrow("cannot change their schedule or execution settings");
     expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("soft deletes an event instead of removing the row", async () => {
+    mocks.update.mockResolvedValueOnce({ id: "event-1" });
+
+    await expect(deleteEvent({ taskId: "event-1" })).resolves.toEqual({ id: "event-1" });
+
+    expect(mocks.getOwnedEvent).toHaveBeenCalledWith("event-1", "user-1");
+    expect(mocks.update).toHaveBeenCalledWith({
+      where: { id: "event-1" },
+      data: { deletedAt: expect.any(Date) },
+    });
+    expect(mocks.delete).not.toHaveBeenCalled();
   });
 });

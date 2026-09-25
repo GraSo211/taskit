@@ -154,6 +154,7 @@ export async function getDashboardData(date = new Date(), requestedSelectedDateK
     where: {
       userId: user.id,
       isActive: true,
+      deletedAt: null,
     },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     include: {
@@ -378,25 +379,57 @@ export async function getDashboardData(date = new Date(), requestedSelectedDateK
 }
 
 export async function getOwnedTask(taskId: string, userId: string) {
-  return prisma.task.findFirst({ where: { id: taskId, userId } });
+  return prisma.task.findFirst({ where: { id: taskId, userId, deletedAt: null } });
 }
 
 export async function getOwnedProjectTask(taskId: string, userId: string) {
   return prisma.task.findFirst({
-    where: { id: taskId, userId, type: "PROJECT" },
+    where: { id: taskId, userId, type: "PROJECT", deletedAt: null },
     include: { subtasks: { orderBy: { position: "asc" } } },
   });
 }
 
 export async function getOwnedEvent(taskId: string, userId: string) {
   return prisma.task.findFirst({
-    where: { id: taskId, userId, type: "EVENT" },
+    where: { id: taskId, userId, type: "EVENT", deletedAt: null },
     include: { eventDayMarks: { orderBy: { date: "asc" } } },
   });
 }
 
+export async function getOwnedTaskIncludingDeleted(taskId: string, userId: string) {
+  return prisma.task.findFirst({ where: { id: taskId, userId } });
+}
+
 export async function getOwnedSubtask(subtaskId: string, taskId: string, userId: string) {
   return prisma.taskSubtask.findFirst({
-    where: { id: subtaskId, taskId, task: { userId, type: "PROJECT" } },
+    where: { id: subtaskId, taskId, task: { userId, type: "PROJECT", deletedAt: null } },
   });
+}
+
+export type HistoryItem = {
+  id: string;
+  kind: "PROJECT" | "EVENT";
+  title: string;
+  description: string | null;
+  startDate: string;
+  deletedAt: string;
+};
+
+export async function getHistoryData() {
+  const user = await requireCurrentUser();
+  const tasks = await prisma.task.findMany({
+    where: { userId: user.id, deletedAt: { not: null }, type: { in: ["PROJECT", "EVENT"] } },
+    orderBy: [{ deletedAt: "desc" }, { id: "desc" }],
+  });
+  return {
+    user,
+    history: tasks.map((task) => ({
+      id: task.id,
+      kind: task.type as "PROJECT" | "EVENT",
+      title: task.title,
+      description: task.description,
+      startDate: dbDateToDateKey(task.startDate),
+      deletedAt: task.deletedAt!.toISOString(),
+    })) satisfies HistoryItem[],
+  };
 }

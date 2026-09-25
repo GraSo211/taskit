@@ -12,9 +12,10 @@ import {
   eventDayMarkSchema,
   updateEventSchema,
 } from "@/lib/task-validation";
+import { restoreTask } from "./tasks";
 
 function revalidateEventViews() {
-  for (const path of ["/", "/dashboard", "/daily", "/weekly", "/projects", "/events"]) {
+  for (const path of ["/", "/dashboard", "/daily", "/weekly", "/projects", "/events", "/history"]) {
     revalidatePath(path);
   }
 }
@@ -98,7 +99,7 @@ export async function deleteEvent(input: unknown) {
   const event = await getOwnedEvent(data.taskId, user.id);
   if (!event) throw new Error("Event not found");
 
-  await prisma.task.delete({ where: { id: event.id } });
+  await prisma.task.update({ where: { id: event.id }, data: { deletedAt: new Date() } });
   revalidateEventViews();
   return { id: event.id };
 }
@@ -174,3 +175,5 @@ export async function failEventDay(input: unknown) {
 export async function clearEventDayMark(input: unknown) {
   return setEventDayOutcome({ ...(input as Record<string, unknown>), outcome: null });
 }
+
+export const restoreEvent = restoreTask;

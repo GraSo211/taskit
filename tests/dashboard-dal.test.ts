@@ -17,7 +17,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-const { getDashboardData } = await import("../src/lib/dal");
+const { getDashboardData, getHistoryData } = await import("../src/lib/dal");
 
 const dailyTask = {
   id: "daily-1",
@@ -282,5 +282,73 @@ describe("getDashboardData history", () => {
       completedCountOnSelectedDate: 1,
       canCompleteSelectedDate: true,
     });
+  });
+});
+
+describe("getHistoryData", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSession.mockResolvedValue({
+      user: { id: "user-1", name: "User", email: "santigs211@gmail.com", image: null },
+    });
+  });
+
+  it("filters to soft-deleted projects and events and serializes them for history", async () => {
+    mocks.findTasks.mockResolvedValue([
+      {
+        id: "project-1",
+        userId: "user-1",
+        type: "PROJECT",
+        title: "Launch",
+        description: "Ship it",
+        startDate: new Date("2026-07-01T00:00:00.000Z"),
+        deletedAt: new Date("2026-08-19T10:00:00.000Z"),
+      },
+      {
+        id: "event-1",
+        userId: "user-1",
+        type: "EVENT",
+        title: "Conference",
+        description: null,
+        startDate: new Date("2026-08-01T00:00:00.000Z"),
+        deletedAt: new Date("2026-08-18T09:00:00.000Z"),
+      },
+    ]);
+
+    const data = await getHistoryData();
+
+    expect(mocks.findTasks).toHaveBeenCalledWith({
+      where: {
+        userId: "user-1",
+        deletedAt: { not: null },
+        type: { in: ["PROJECT", "EVENT"] },
+      },
+      orderBy: [{ deletedAt: "desc" }, { id: "desc" }],
+    });
+    expect(data.user).toMatchObject({ id: "user-1" });
+    expect(data.history).toEqual([
+      {
+        id: "project-1",
+        kind: "PROJECT",
+        title: "Launch",
+        description: "Ship it",
+        startDate: "2026-07-01",
+        deletedAt: "2026-08-19T10:00:00.000Z",
+      },
+      {
+        id: "event-1",
+        kind: "EVENT",
+        title: "Conference",
+        description: null,
+        startDate: "2026-08-01",
+        deletedAt: "2026-08-18T09:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("returns an empty history when no soft-deleted projects or events exist", async () => {
+    mocks.findTasks.mockResolvedValue([]);
+
+    await expect(getHistoryData()).resolves.toMatchObject({ history: [] });
   });
 });
